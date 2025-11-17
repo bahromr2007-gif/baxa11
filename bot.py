@@ -7,11 +7,10 @@ from shazamio import Shazam
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
-    CommandHandler
+    CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
-    ContextTypes,
-    filters)
+    ContextTypes, filters)
 
 # ================= SOZLAMALAR =================
 TELEGRAM_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
@@ -21,8 +20,7 @@ MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
 yt_cache = "yt-dlp-cache"  # papka nomi
 command = [
     "yt-dlp",
-    "--cache-dir", yt_cache,
-    url]
+    "--cache-dir", yt_cache-url]
 
 # Instagram videolarni vaqtincha saqlash
 insta_videos = {}  # {chat_id: video_file_path}
