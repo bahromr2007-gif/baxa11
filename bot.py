@@ -15,7 +15,7 @@ from telegram.ext import (
 )
 
 # ================= SOZLAMALAR =================
-TELEGRAM_TOKEN = "8522396515:AAHNjZBxPTas3YkrPrpcp498XlZMY8x9ckY"
+TELEGRAM_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
 MY_TG = "@Rustamov_v1"
 MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
 # ==============================================
