@@ -1,10 +1,11 @@
 COOKIE_DATA = """
-SID=xxx;
-HSID=yyy;
-SSID=zzz;
-PREF=abc;
+SID=AgdKJH87ahsy...;
+HSID=ACEDsa9812...;
+SSID=AasjdhAJS...;
+PREF=f1=50000000&f6=400;
+__Secure-1PSID=...
+__Secure-3PSID=...
 """
-
 with open("cookies.txt", "w") as f:
     f.write(COOKIE_DATA)
 
