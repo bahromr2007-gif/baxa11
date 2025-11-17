@@ -1,4 +1,15 @@
+COOKIE_DATA = """
 SID=xxx;
 HSID=yyy;
 SSID=zzz;
 PREF=abc;
+"""
+
+with open("cookies.txt", "w") as f:
+    f.write(COOKIE_DATA)
+
+command = [
+    "yt-dlp",
+    "--cookies", "cookies.txt",
+    url
+]
