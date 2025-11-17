@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libasound2-dev \
     curl \
     git \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Rust o‘rnatish
@@ -29,3 +30,4 @@ COPY . .
 
 # Botni ishga tushirish
 CMD ["python", "bot.py"]
+
