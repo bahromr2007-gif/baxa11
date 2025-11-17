@@ -1,0 +1,4 @@
+SID=xxx;
+HSID=yyy;
+SSID=zzz;
+PREF=abc;
