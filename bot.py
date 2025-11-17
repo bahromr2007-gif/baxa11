@@ -7,12 +7,11 @@ from shazamio import Shazam
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
-    CommandHandler,
+    CommandHandler
     MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
-    filters
-)
+    filters)
 
 # ================= SOZLAMALAR =================
 TELEGRAM_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
@@ -23,8 +22,7 @@ yt_cache = "yt-dlp-cache"  # papka nomi
 command = [
     "yt-dlp",
     "--cache-dir", yt_cache,
-    url
-]
+    url]
 
 # Instagram videolarni vaqtincha saqlash
 insta_videos = {}  # {chat_id: video_file_path}
@@ -76,12 +74,12 @@ async def search_youtube_paginated(update: Update, query: str, page: int = 0):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-            # keyboard = []
-            # for idx, e in enumerate(current_entries, start=start+1):
-            #     title = e.get("title", "No title")[:50]
-            #     url = e.get("webpage_url")
-            #     yt_cache[idx] = url
-            #     keyboard.append([InlineKeyboardButton(f"{idx}. {title}", callback_data=f"yt|{idx}")])
+             keyboard = []
+             for idx, e in enumerate(current_entries, start=start+1):
+                 title = e.get("title", "No title")[:50]
+                 url = e.get("webpage_url")
+                 yt_cache[idx] = url
+                 keyboard.append([InlineKeyboardButton(f"{idx}. {title}", callback_data=f"yt|{idx}")])
 
             # Next / Back tugmalar
             nav_buttons = []
