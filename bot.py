@@ -20,36 +20,7 @@ MY_TG = "@Rustamov_v1"
 MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
 # ==============================================
 
-# YouTube cache
-yt_cache = {}  # {index: video_url}
-def download(update, context):
-    url = context.args[0]
 
-    COOKIE_DATA = """
-    SID=AgdKJH87ahsy...;
-    HSID=ACEDsa9812...;
-    SSID=AasjdhAJS...;
-    PREF=f1=50000000&f6=400;
-    __Secure-1PSID=...;
-    __Secure-3PSID=...;
-    """
-
-    # cookies.txt fayl yaratish
-    with open("cookies.txt", "w") as f:
-        f.write(COOKIE_DATA)
-
-    output = "video.mp4"
-
-    command = [
-        "yt-dlp",
-        "--cookies", "cookies.txt",
-        "-o", output,
-        url
-    ]
-
-    subprocess.run(command)
-    update.message.reply_document(open(output, "rb"))
-    os.remove(output)
 # Instagram videolarni vaqtincha saqlash
 insta_videos = {}  # {chat_id: video_file_path}
 # ================= /start KOMANDASI =================
