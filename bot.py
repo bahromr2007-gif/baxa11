@@ -14,7 +14,7 @@ from telegram.ext import (
 )
 
 # ================= SOZLAMALAR =================
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")  # Railwayda Environment Variable sifatida o'rnat
+TELEGRAM_TOKEN = "8522396515:AAHNjZBxPTas3YkrPrpcp498XlZMY8x9ckY"  # Railwayda Environment Variable sifatida o'rnat
 MY_TG = "@Rustamov_v1"
 MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
 COOKIES_FILE = "cookies.txt"  # Shu faylni bot papkasiga qo'yish kerak
