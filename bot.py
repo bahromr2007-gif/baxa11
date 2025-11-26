@@ -40,7 +40,8 @@ async def search_youtube(update: Update, query: str):
     ydl_opts = {
         "format": "bestaudio/best",
         "quiet": True,
-        "noplaylist": True
+        "noplaylist": True,
+        "cookies_from_browser": "chrome"
     }
 
     try:
