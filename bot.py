@@ -17,13 +17,11 @@ from telegram.ext import (
 TELEGRAM_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
 MY_TG = "@Rustamov_v1"
 MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
-COOKIES_FILE = "cookies.txt"  # Cookies faylni bot papkasiga qo'yish
+COOKIES_FILE = "cookies.txt"  # YouTube cookies faylini bot papkasiga qo'ying
 # ==============================================
 
 yt_cache = {}
-
-# FFmpeg yo'li Railway uchun
-AudioSegment.converter = "/usr/bin/ffmpeg"
+AudioSegment.converter = "/usr/bin/ffmpeg"  # Railway FFmpeg yo'li
 
 # ================= /start KOMANDASI =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
