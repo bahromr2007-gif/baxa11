@@ -14,16 +14,15 @@ from telegram.ext import (
 )
 
 # ================= SOZLAMALAR =================
-TELEGRAM_TOKEN = "8522396515:AAHNjZBxPTas3YkrPrpcp498XlZMY8x9ckY"  # Railwayda Environment Variable sifatida o'rnat
+TELEGRAM_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
 MY_TG = "@Rustamov_v1"
 MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
-COOKIES_FILE = "cookies.txt"  # Shu faylni bot papkasiga qo'yish kerak
+COOKIES_FILE = "cookies.txt"  # Cookies faylni bot papkasiga qo'yish
 # ==============================================
 
 yt_cache = {}
-yt_cache_folder = "yt-dlp-cache"
 
-# FFmpeg yo'lni aniqlash (Railway uchun)
+# FFmpeg yo'li Railway uchun
 AudioSegment.converter = "/usr/bin/ffmpeg"
 
 # ================= /start KOMANDASI =================
@@ -34,7 +33,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📸 Instagram: {MY_IG}\n\n"
         "Menga qo'shiq nomi yozing yoki Instagram link tashlang 🎧"
     )
-    await update.message.reply_text(text)
+    keyboard = [
+        [InlineKeyboardButton("🎵 Musiqani qidirish", callback_data="menu_music")],
+        [InlineKeyboardButton("📸 Instagram video", callback_data="menu_insta")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(text, reply_markup=reply_markup)
 
 # ================= YOUTUBE QIDIRUV =================
 async def search_youtube(update: Update, query: str):
@@ -43,7 +47,7 @@ async def search_youtube(update: Update, query: str):
         "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
-        "cookies": COOKIES_FILE,  # Railway uchun cookies
+        "cookies": COOKIES_FILE,
     }
 
     try:
@@ -72,31 +76,27 @@ async def search_youtube(update: Update, query: str):
 async def download_and_send_youtube(update: Update, vid_id: int):
     url = yt_cache.get(vid_id)
     if not url:
-        if hasattr(update, 'callback_query') and update.callback_query:
-            await update.callback_query.message.reply_text("⚠️ Video topilmadi.")
+        await update.callback_query.message.reply_text("⚠️ Video topilmadi.")
         return
 
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": "song_temp.%(ext)s",
         "quiet": True,
-        "cookies": COOKIES_FILE,  # Shu qatorda cookies ishlatiladi
+        "cookies": COOKIES_FILE,
     }
 
     try:
-        if hasattr(update, 'callback_query') and update.callback_query:
-            await update.callback_query.edit_message_text("⏳ Yuklanmoqda...")
+        await update.callback_query.edit_message_text("⏳ Yuklanmoqda...")
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             original_filename = ydl.prepare_filename(info)
 
-        # MP3 ga konvert qilish
         output_filename = "song_temp.mp3"
         audio = AudioSegment.from_file(original_filename)
         audio.export(output_filename, format="mp3")
 
-        # Telegramga yuborish
         caption = f"🎶 {info.get('title', 'Nomaʼlum')}"
         await update.effective_chat.send_audio(
             audio=open(output_filename, "rb"),
@@ -104,17 +104,13 @@ async def download_and_send_youtube(update: Update, vid_id: int):
         )
 
     except Exception as e:
-        error_msg = f"⚠️ Yuklab bo'lmadi: {str(e)}"
-        await update.effective_chat.send_message(error_msg)
+        await update.effective_chat.send_message(f"⚠️ Yuklab bo'lmadi: {str(e)}")
 
     finally:
-        # Fayllarni tozalash
         for filename in [original_filename, output_filename]:
             if filename and os.path.exists(filename):
-                try:
-                    os.remove(filename)
-                except:
-                    pass
+                try: os.remove(filename)
+                except: pass
 
 # ================= CALLBACK HANDLER =================
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -125,20 +121,20 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("yt|"):
         vid_id = int(data.split("|")[1])
         await download_and_send_youtube(update, vid_id)
+    elif data == "menu_music":
+        await query.message.reply_text("🎧 Qo'shiq nomini yozing:")
+    elif data == "menu_insta":
+        await query.message.reply_text("📸 Instagram video linkini yuboring:")
 
 # ================= MUSIQA ANIQLASH =================
 async def recognize_music_safe(audio_path: str):
     try:
         shazam = Shazam()
         out = await shazam.recognize_song(audio_path)
-        
-        if not out or 'track' not in out:
-            return None
-            
+        if not out or 'track' not in out: return None
         track = out['track']
         title = track.get("title", "Nomaʼlum")
         artist = track.get("subtitle", "Nomaʼlum")
-        
         return f"{title} - {artist}"
     except Exception as e:
         print(f"Shazam xatosi: {e}")
@@ -160,18 +156,15 @@ async def download_instagram(update: Update, link: str):
             info = ydl.extract_info(link, download=True)
             video_filename = ydl.prepare_filename(info)
 
-        # Videoni yuborish
         await update.message.reply_video(
-            video=open(video_filename, "rb"), 
+            video=open(video_filename, "rb"),
             caption="📸 Video yuklandi"
         )
 
-        # Audio konvert qilish
         audio_filename = "insta_audio.mp3"
         audio = AudioSegment.from_file(video_filename)
         audio.export(audio_filename, format="mp3")
 
-        # Musiqani aniqlash
         await update.message.reply_text("🎧 Musiqa aniqlanmoqda...")
         music_info = await recognize_music_safe(audio_filename)
 
@@ -193,13 +186,10 @@ async def download_instagram(update: Update, link: str):
         await update.message.reply_text(f"⚠️ Xato: {str(e)}")
 
     finally:
-        # Fayllarni tozalash
         for filename in [video_filename, audio_filename]:
             if filename and os.path.exists(filename):
-                try:
-                    os.remove(filename)
-                except:
-                    pass
+                try: os.remove(filename)
+                except: pass
 
 # ================= ASOSIY HANDLER =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -211,7 +201,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         yt_cache[0] = text
         await download_and_send_youtube(update, 0)
     else:
-        await update.message.reply_text("🎧 Musiqa qidirilmoqda...")
         await search_youtube(update, text)
 
 # ================= BOTNI ISHGA TUSHURISH =================
@@ -227,7 +216,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_handler))
 
     print("🤖 Bot ishga tushdi...")
-    app.run_polling()
+    app.run_polling()  # Faqat polling, bitta instance
 
 if __name__ == "__main__":
     main()
