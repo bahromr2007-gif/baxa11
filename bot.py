@@ -10,12 +10,14 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
-    ContextTypes, filters)
+    ContextTypes, filters
+)
 
 # ================= SOZLAMALAR =================
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")  # Railwayda Environment Variable sifatida o'rnat
 MY_TG = "@Rustamov_v1"
 MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
+COOKIES_FILE = "cookies.txt"  # Shu faylni bot papkasiga qo'yish kerak
 # ==============================================
 
 yt_cache = {}
@@ -41,7 +43,7 @@ async def search_youtube(update: Update, query: str):
         "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
-        "cookies_from_browser": "chrome"
+        "cookies": COOKIES_FILE,  # Railway uchun cookies
     }
 
     try:
@@ -78,6 +80,7 @@ async def download_and_send_youtube(update: Update, vid_id: int):
         "format": "bestaudio/best",
         "outtmpl": "song_temp.%(ext)s",
         "quiet": True,
+        "cookies": COOKIES_FILE,  # Shu qatorda cookies ishlatiladi
     }
 
     try:
@@ -149,6 +152,7 @@ async def download_instagram(update: Update, link: str):
         "format": "best",
         "outtmpl": "insta_temp.%(ext)s",
         "quiet": True,
+        "cookies": COOKIES_FILE,
     }
 
     try:
@@ -212,7 +216,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= BOTNI ISHGA TUSHURISH =================
 def main():
-    # Environment tokenni tekshirish
     if not TELEGRAM_TOKEN:
         print("❌ TELEGRAM_TOKEN topilmadi!")
         return
