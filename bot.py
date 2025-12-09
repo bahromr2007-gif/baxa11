@@ -10,20 +10,22 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
-    ContextTypes, filters
+    ContextTypes,
+    filters
 )
 
 # ================= SOZLAMALAR =================
-TELEGRAM_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
+TELEGRAM_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"  # ⚠️ Ochiq tashlamang!
 MY_TG = "@Rustamov_v1"
 MY_IG = "https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp"
-COOKIES_FILE = "cookies.txt"  # YouTube cookies faylini bot papkasiga qo'ying
-# ==============================================
+COOKIES_FILE = "cookies.txt"
+
+# Railway uchun ffmpeg yo'li
+AudioSegment.converter = "/usr/bin/ffmpeg"
 
 yt_cache = {}
-AudioSegment.converter = "/usr/bin/ffmpeg"  # Railway FFmpeg yo'li
 
-# ================= /start KOMANDASI =================
+# ================= /start =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         f"👋 Salom! Men musiqa topuvchi botman 🎵\n\n"
@@ -32,20 +34,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Menga qo'shiq nomi yozing yoki Instagram link tashlang 🎧"
     )
     keyboard = [
-        [InlineKeyboardButton("🎵 Musiqani qidirish", callback_data="menu_music")],
+        [InlineKeyboardButton("🎵 Musiqa qidirish", callback_data="menu_music")],
         [InlineKeyboardButton("📸 Instagram video", callback_data="menu_insta")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup)
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ================= YOUTUBE QIDIRUV =================
 async def search_youtube(update: Update, query: str):
+    await update.message.reply_text("🔍 Musiqa qidirmoqdaman...")
+
     search_url = f"ytsearch5:{query}"
     ydl_opts = {
         "format": "bestaudio/best",
         "quiet": True,
         "noplaylist": True,
-        "cookies": COOKIES_FILE,
+        "cookies": COOKIES_FILE
     }
 
     try:
@@ -53,22 +56,24 @@ async def search_youtube(update: Update, query: str):
             info = ydl.extract_info(search_url, download=False)
             entries = info.get("entries", [])[:5]
 
-            if not entries:
-                await update.message.reply_text("🔍 Natija topilmadi.")
-                return
+        if not entries:
+            await update.message.reply_text("❌ Hech narsa topilmadi.")
+            return
 
-            keyboard = []
-            for idx, e in enumerate(entries, start=1):
-                title = e.get("title", "No title")[:60]
-                url = e.get("webpage_url")
-                yt_cache[idx] = url
-                keyboard.append([InlineKeyboardButton(f"{idx}. {title}", callback_data=f"yt|{idx}")])
+        keyboard = []
+        for idx, e in enumerate(entries, start=1):
+            title = e.get("title", "No title")[:60]
+            url = e.get("webpage_url")
+            yt_cache[idx] = url
+            keyboard.append([InlineKeyboardButton(f"{idx}. {title}", callback_data=f"yt|{idx}")])
 
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("🎧 Quyidagi videolardan birini tanlang:", reply_markup=reply_markup)
+        await update.message.reply_text(
+            "🎧 Quyidagi musiqalardan birini tanlang:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     except Exception as e:
-        await update.message.reply_text(f"❌ YouTube xatosi: {e}")
+        await update.message.reply_text(f"❌ Xato: {e}")
 
 # ================= YOUTUBE MP3 YUKLASH =================
 async def download_and_send_youtube(update: Update, vid_id: int):
@@ -79,9 +84,9 @@ async def download_and_send_youtube(update: Update, vid_id: int):
 
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": "song_temp.%(ext)s",
+        "outtmpl": "song.%(ext)s",
         "quiet": True,
-        "cookies": COOKIES_FILE,
+        "cookies": COOKIES_FILE
     }
 
     try:
@@ -89,107 +94,93 @@ async def download_and_send_youtube(update: Update, vid_id: int):
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            original_filename = ydl.prepare_filename(info)
+            filename = ydl.prepare_filename(info)
 
-        output_filename = "song_temp.mp3"
-        audio = AudioSegment.from_file(original_filename)
-        audio.export(output_filename, format="mp3")
+        mp3_file = "song.mp3"
+        AudioSegment.from_file(filename).export(mp3_file, format="mp3")
 
-        caption = f"🎶 {info.get('title', 'Nomaʼlum')}"
         await update.effective_chat.send_audio(
-            audio=open(output_filename, "rb"),
-            caption=caption
+            audio=open(mp3_file, "rb"),
+            caption=f"🎶 {info.get('title', 'Nomaʼlum')}"
         )
 
     except Exception as e:
-        await update.effective_chat.send_message(f"⚠️ Yuklab bo'lmadi: {str(e)}")
+        await update.effective_chat.send_message(f"⚠️ Xato: {e}")
 
     finally:
-        for filename in [original_filename, output_filename]:
-            if filename and os.path.exists(filename):
-                try: os.remove(filename)
-                except: pass
+        for file in [filename, mp3_file]:
+            try:
+                if os.path.exists(file): os.remove(file)
+            except: pass
 
-# ================= CALLBACK HANDLER =================
+# ================= CALLBACK =================
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
+    data = update.callback_query.data
+    await update.callback_query.answer()
 
     if data.startswith("yt|"):
-        vid_id = int(data.split("|")[1])
-        await download_and_send_youtube(update, vid_id)
+        await download_and_send_youtube(update, int(data.split("|")[1]))
     elif data == "menu_music":
-        await query.message.reply_text("🎧 Qo'shiq nomini yozing:")
+        await update.callback_query.message.reply_text("🎧 Qo'shiq nomini yozing:")
     elif data == "menu_insta":
-        await query.message.reply_text("📸 Instagram video linkini yuboring:")
+        await update.callback_query.message.reply_text("📸 Instagram video linkini yuboring:")
 
 # ================= MUSIQA ANIQLASH =================
 async def recognize_music_safe(audio_path: str):
     try:
-        shazam = Shazam()
-        out = await shazam.recognize_song(audio_path)
-        if not out or 'track' not in out: return None
-        track = out['track']
+        out = await Shazam().recognize_song(audio_path)
+        if "track" not in out:
+            return None
+
+        track = out["track"]
         title = track.get("title", "Nomaʼlum")
         artist = track.get("subtitle", "Nomaʼlum")
         return f"{title} - {artist}"
-    except Exception as e:
-        print(f"Shazam xatosi: {e}")
+
+    except:
         return None
 
-# ================= INSTAGRAM VIDEO HANDLER =================
+# ================= INSTAGRAM VIDEO =================
 async def download_instagram(update: Update, link: str):
     await update.message.reply_text("📥 Instagram videosi yuklanmoqda...")
 
     ydl_opts = {
         "format": "best",
-        "outtmpl": "insta_temp.%(ext)s",
+        "outtmpl": "insta.%(ext)s",
         "quiet": True,
-        "cookies": COOKIES_FILE,
+        "cookies": COOKIES_FILE
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=True)
-            video_filename = ydl.prepare_filename(info)
+            video = ydl.prepare_filename(info)
 
-        await update.message.reply_video(
-            video=open(video_filename, "rb"),
-            caption="📸 Video yuklandi"
-        )
+        await update.message.reply_video(open(video, "rb"), caption="📸 Video yuklandi")
 
-        audio_filename = "insta_audio.mp3"
-        audio = AudioSegment.from_file(video_filename)
-        audio.export(audio_filename, format="mp3")
+        # musiqa ajratish
+        audio = "insta.mp3"
+        AudioSegment.from_file(video).export(audio, format="mp3")
 
         await update.message.reply_text("🎧 Musiqa aniqlanmoqda...")
-        music_info = await recognize_music_safe(audio_filename)
+        found = await recognize_music_safe(audio)
 
-        if music_info:
-            if " - " in music_info:
-                track_name, artist_name = music_info.split(" - ", 1)
-            else:
-                track_name = music_info
-                artist_name = "Nomaʼlum"
-
-            await update.message.reply_text(
-                f"🎵 Qo'shiq: {track_name}\n👤 Ijrochi: {artist_name}"
-            )
-            await search_youtube(update, music_info)
+        if found:
+            await update.message.reply_text(f"🎵 Topildi: {found}")
+            await search_youtube(update, found)
         else:
             await update.message.reply_text("❌ Musiqa aniqlanmadi.")
 
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Xato: {str(e)}")
+        await update.message.reply_text(f"⚠️ Xato: {e}")
 
     finally:
-        for filename in [video_filename, audio_filename]:
-            if filename and os.path.exists(filename):
-                try: os.remove(filename)
-                except: pass
+        for f in [video, audio]:
+            try:
+                if os.path.exists(f): os.remove(f)
+            except: pass
 
-# ================= ASOSIY HANDLER =================
+# ================= XABARLAR HANDLER =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
@@ -201,12 +192,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await search_youtube(update, text)
 
-# ================= BOTNI ISHGA TUSHURISH =================
+# ================= BOT ISHGA TUSHURISH =================
 def main():
-    if not TELEGRAM_TOKEN:
-        print("❌ TELEGRAM_TOKEN topilmadi!")
-        return
-
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -214,7 +201,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_handler))
 
     print("🤖 Bot ishga tushdi...")
-    app.run_polling()  # Faqat polling, bitta instance
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
