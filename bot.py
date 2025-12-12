@@ -10,7 +10,7 @@ import yt_dlp
 
 # ========================================
 # BOT TOKEN - o'zingizning tokeningizni qo'ying
-BOT_TOKEN = "8509239536:AAGn_P1D82EpifJdqB56TrrcVx_oMrOV1WQ"
+BOT_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ========================================
