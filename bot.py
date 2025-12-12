@@ -5,6 +5,7 @@ import tempfile
 import subprocess
 import hashlib
 import re
+import json
 from telebot import types
 from shazamio import Shazam
 import yt_dlp
@@ -35,28 +36,49 @@ if not os.path.exists("temp"):
     os.makedirs("temp")
 
 # ================= YUKLASH SETTINGLARI =================
-# Instagram uchun maxsus settinglar
+# Instagram uchun YANGI va SIMPLE settinglar
 ydl_opts_instagram = {
-    'format': 'best[height<=720]',  # 720p gacha
+    'format': 'best',  # Eng yaxshi formatni tanlash
     'quiet': True,
     'no_warnings': True,
     'outtmpl': 'temp/%(id)s.%(ext)s',
-    'socket_timeout': 30,
-    'retries': 5,
-    'fragment_retries': 5,
-    'extractor_args': {
-        'instagram': {
-            'requested_clips_count': 1,
-            'postprocessor_args': {'instagram': {'final_ext': 'mp4'}}
-        }
-    },
+    'socket_timeout': 60,
+    'retries': 10,
+    'fragment_retries': 10,
+    'ignoreerrors': True,
+    'no_check_certificate': True,
+    'geo_bypass': True,
+    'geo_bypass_country': 'US',
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-us,en;q=0.5',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
     },
-    'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
+}
+
+# Instagram uchun ALTERNATIVE format
+ydl_opts_instagram_alt = {
+    'format': 'best[height<=720]/best[height<=480]/worst',
+    'quiet': True,
+    'no_warnings': True,
+    'outtmpl': 'temp/instagram_%(id)s.%(ext)s',
+    'socket_timeout': 60,
+    'retries': 5,
+    'ignoreerrors': True,
+    'extractor_args': {
+        'instagram': {
+            'format': 'best',
+            'post_data': {}
+        }
+    },
 }
 
 # TikTok uchun
@@ -72,13 +94,15 @@ ydl_opts_tiktok = {
     },
 }
 
-# Audio yuklash uchun
-ydl_opts_audio = {
+# Audio yuklash uchun (qo'shiq nomi bilan)
+ydl_opts_audio_named = {
     'format': 'bestaudio/best',
-    'outtmpl': 'temp/%(id)s.%(ext)s',
+    'outtmpl': 'temp/%(title)s.%(ext)s',
     'quiet': True,
     'socket_timeout': 30,
     'retries': 3,
+    'restrictfilenames': True,
+    'windowsfilenames': True,
     'postprocessors': [{
         'key': 'FFmpegExtractAudio',
         'preferredcodec': 'mp3',
@@ -131,8 +155,10 @@ def is_instagram_url(url):
         r'https?://(www\.)?instagram\.com/(p|reel|tv)/',
         r'https?://(www\.)?instagram\.com/reels/',
         r'https?://(www\.)?instagram\.com/tv/',
+        r'https?://(www\.)?instagram\.com/stories/',
     ]
     
+    url = url.lower().strip()
     for pattern in patterns:
         if re.search(pattern, url):
             return True
@@ -144,12 +170,58 @@ def is_tiktok_url(url):
         r'https?://(www\.)?tiktok\.com/',
         r'https?://(vm\.)?tiktok\.com/',
         r'https?://vt\.tiktok\.com/',
+        r'https?://m\.tiktok\.com/',
     ]
     
+    url = url.lower().strip()
     for pattern in patterns:
         if re.search(pattern, url):
             return True
     return False
+
+def extract_instagram_video_simple(url):
+    """Instagram videoni oddiy usulda yuklash"""
+    try:
+        # Birinchi urinish: asosiy format
+        with yt_dlp.YoutubeDL(ydl_opts_instagram) as ydl:
+            info = ydl.extract_info(url, download=True)
+            video_id = info.get('id', 'instagram_video')
+            title = info.get('title', 'Instagram Video')
+            
+            # Faylni qidirish
+            for file in os.listdir("temp"):
+                if file.startswith(video_id) or video_id in file:
+                    return os.path.join("temp", file), title
+            
+            # Agar topilmasa
+            for file in os.listdir("temp"):
+                if file.endswith(('.mp4', '.webm', '.mkv')):
+                    file_path = os.path.join("temp", file)
+                    # Eng yangi fayl
+                    if os.path.getctime(file_path) > os.path.getctime("temp") + 5:
+                        return file_path, title
+                        
+        return None, title
+        
+    except yt_dlp.utils.DownloadError:
+        # Ikkinchi urinish: alternativ format
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts_instagram_alt) as ydl:
+                info = ydl.extract_info(url, download=True)
+                
+                for file in os.listdir("temp"):
+                    if file.startswith('instagram_') and file.endswith(('.mp4', '.webm')):
+                        return os.path.join("temp", file), info.get('title', 'Instagram Video')
+                        
+                return None, info.get('title', 'Instagram Video')
+                
+        except Exception as e:
+            print(f"Instagram alternativ xatosi: {e}")
+            return None, "Instagram Video"
+            
+    except Exception as e:
+        print(f"Instagram umumiy xatosi: {e}")
+        return None, "Instagram Video"
 
 # ================= SHAZAM ANIQLASH =================
 async def recognize_song(audio_bytes):
@@ -207,63 +279,51 @@ def handle_audio(message):
             # TEZ YUKLASH
             query = f"{artist} {title} audio"
             try:
-                clean_query = clean_filename(f"{artist}_{title}")
-                output_file = f"temp/{clean_query}.mp3"
+                # To'g'ri nom bilan yuklash
+                clean_title = clean_filename(title)
+                clean_artist = clean_filename(artist)
+                output_file = f"temp/{clean_artist} - {clean_title}.mp3"
                 
-                # Agar fayl allaqachon mavjud bo'lsa, o'chirish
-                if os.path.exists(output_file):
-                    os.remove(output_file)
+                opts = ydl_opts_audio_named.copy()
+                opts['outtmpl'] = f"temp/{clean_artist} - {clean_title}.%(ext)s"
                 
-                # Tez yuklash opsiyalari
-                fast_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': output_file.replace('.mp3', '.%(ext)s'),
-                    'quiet': True,
-                    'no_warnings': True,
-                    'socket_timeout': 15,
-                    'retries': 2,
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                    }],
-                }
-                
-                with yt_dlp.YoutubeDL(fast_opts) as ydl:
+                with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(f"ytsearch1:{query}", download=True)
-                    
-                # Faylni qidirish
-                mp3_found = None
-                for file in os.listdir("temp"):
-                    if file.endswith('.mp3'):
-                        mp3_found = os.path.join("temp", file)
-                        break
                 
-                if mp3_found and os.path.exists(mp3_found):
-                    file_size = os.path.getsize(mp3_found)
-                    if file_size > 1024:
-                        with open(mp3_found, 'rb') as f:
-                            bot.send_audio(
-                                message.chat.id, 
-                                f,
-                                title=title[:64],
-                                performer=artist[:64],
-                                caption=f"🎵 {title}\n👤 {artist}"
-                            )
-                        
-                        os.remove(mp3_found)
-                        bot.delete_message(message.chat.id, msg.message_id)
+                # Faylni qidirish
+                if os.path.exists(output_file):
+                    with open(output_file, 'rb') as f:
+                        bot.send_audio(
+                            message.chat.id, 
+                            f,
+                            title=title[:64],
+                            performer=artist[:64],
+                            caption=f"🎵 {title}\n👤 {artist}"
+                        )
+                    
+                    os.remove(output_file)
+                    bot.delete_message(message.chat.id, msg.message_id)
+                else:
+                    # Boshqa nom bilan qidirish
+                    for file in os.listdir("temp"):
+                        if file.endswith('.mp3') and (clean_title[:20] in file or clean_artist[:20] in file):
+                            with open(os.path.join("temp", file), 'rb') as f:
+                                bot.send_audio(
+                                    message.chat.id, 
+                                    f,
+                                    title=title[:64],
+                                    performer=artist[:64],
+                                    caption=f"🎵 {title}\n👤 {artist}"
+                                )
+                            os.remove(os.path.join("temp", file))
+                            bot.delete_message(message.chat.id, msg.message_id)
+                            break
                     else:
                         bot.edit_message_text(
-                            f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n❌ Fayl yuklanmadi",
+                            f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}",
                             message.chat.id,
                             msg.message_id
                         )
-                else:
-                    bot.edit_message_text(
-                        f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}",
-                        message.chat.id,
-                        msg.message_id
-                    )
                     
             except Exception as e:
                 bot.edit_message_text(
@@ -271,7 +331,7 @@ def handle_audio(message):
                     message.chat.id,
                     msg.message_id
                 )
-                print(f"Yuklash xatosi: {e}")
+                print(f"Audio yuklash xatosi: {e}")
         else:  
             bot.edit_message_text("❌ Musiqa topilmadi", message.chat.id, msg.message_id)  
               
@@ -285,53 +345,34 @@ def handle_instagram_reel(message):
         url = message.text.strip()
         msg = bot.reply_to(message, "📱 Instagram videoni yuklamoqda...")
 
-        # Instagram uchun maxsus extractor
-        insta_opts = ydl_opts_instagram.copy()
+        # Videoni yuklash
+        video_path, video_title = extract_instagram_video_simple(url)
         
-        with yt_dlp.YoutubeDL(insta_opts) as ydl:  
-            try:
-                info = ydl.extract_info(url, download=True)
-                
-                # Faylni qidirish
-                video_files = []
-                for file in os.listdir("temp"):
-                    if file.endswith(('.mp4', '.webm', '.mkv')):
-                        video_files.append(os.path.join("temp", file))
-                
-                if video_files:
-                    # Eng oxirgi yuklangan faylni olish
-                    video_path = max(video_files, key=os.path.getctime)
-                    
-                    btn_hash = create_hash(video_path)
-                    markup = types.InlineKeyboardMarkup()  
-                    markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"insta_{btn_hash}"))  
+        if video_path and os.path.exists(video_path):
+            btn_hash = create_hash(video_path)
+            markup = types.InlineKeyboardMarkup()  
+            markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"insta_{btn_hash}"))  
 
-                    with open(video_path, 'rb') as f:  
-                        bot.send_video(message.chat.id, f, reply_markup=markup)  
+            with open(video_path, 'rb') as f:  
+                bot.send_video(message.chat.id, f, reply_markup=markup, caption="📱 Instagram video")  
 
-                    with open(f"temp/{btn_hash}.txt", "w") as f:  
-                        f.write(video_path)  
+            with open(f"temp/{btn_hash}.txt", "w") as f:  
+                f.write(video_path)  
 
-                    bot.delete_message(message.chat.id, msg.message_id)
-                else:
-                    bot.edit_message_text("❌ Video fayl topilmadi", message.chat.id, msg.message_id)
-                    
-            except yt_dlp.utils.DownloadError as e:
-                # Agar cookies kerak bo'lsa
-                if "login_required" in str(e):
-                    bot.edit_message_text(
-                        "❌ Instagram video yuklash uchun login kerak\n"
-                        "Iltimos, boshqa video yuboring yoki Instagram'dan video linkini oling",
-                        message.chat.id,
-                        msg.message_id
-                    )
-                else:
-                    bot.edit_message_text(f"❌ Instagram xatosi: {str(e)[:100]}", message.chat.id, msg.message_id)
-            except Exception as e:
-                bot.edit_message_text(f"❌ Xatolik: {str(e)[:100]}", message.chat.id, msg.message_id)
+            bot.delete_message(message.chat.id, msg.message_id)
+        else:
+            bot.edit_message_text(
+                "❌ Instagram video yuklanmadi\n"
+                "Iltimos:\n"
+                "1. Video ommaviy bo'lishi kerak (private emas)\n"
+                "2. To'g'ri Instagram linki bo'lishi kerak\n"
+                "3. Boshqa video yuboring",
+                message.chat.id,
+                msg.message_id
+            )
 
     except Exception as e:  
-        bot.reply_to(message, f"❌ Instagram video yuklanmadi: {str(e)[:100]}")
+        bot.reply_to(message, f"❌ Instagram video yuklanmadi\nXato: {str(e)[:100]}")
 
 # ================= TIKTOK HANDLER =================
 @bot.message_handler(func=lambda m: is_tiktok_url(m.text))
@@ -357,14 +398,14 @@ def handle_tiktok(message):
                 markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"tiktok_{btn_hash}"))  
 
                 with open(video_path, 'rb') as f:  
-                    bot.send_video(message.chat.id, f, reply_markup=markup)  
+                    bot.send_video(message.chat.id, f, reply_markup=markup, caption="📱 TikTok video")  
 
                 with open(f"temp/{btn_hash}.txt", "w") as f:  
                     f.write(video_path)  
 
                 bot.delete_message(message.chat.id, msg.message_id)
             else:
-                bot.edit_message_text("❌ Video fayl topilmadi", message.chat.id, msg.message_id)
+                bot.edit_message_text("❌ TikTok video yuklanmadi", message.chat.id, msg.message_id)
 
     except Exception as e:  
         bot.reply_to(message, f"❌ TikTok video yuklanmadi: {str(e)[:100]}")
@@ -386,19 +427,18 @@ def handle_media_music(call):
         # FAQAT 10 soniya audio (tezroq)
         short_audio_path = video_path.rsplit('.', 1)[0] + '_short.mp3'
         
-        # ffmpeg orqali audio olish
         try:
             subprocess.run([
                 'ffmpeg', '-i', video_path, 
                 '-t', '10', 
                 '-vn', 
                 '-acodec', 'mp3', 
-                '-ab', '128k',
-                '-ar', '44100',
                 '-y', short_audio_path
-            ], capture_output=True, timeout=30, check=True)
-        except subprocess.CalledProcessError as e:
+            ], capture_output=True, timeout=30, check=False)
+        except Exception as e:
             print(f"FFmpeg xatosi: {e}")
+
+        if not os.path.exists(short_audio_path):
             bot.send_message(call.message.chat.id, "❌ Audio ajratishda xatolik")
             return
 
@@ -419,34 +459,18 @@ def handle_media_music(call):
             # TEZ YUKLASH
             query = f"{artist} {title} audio"
             try:
-                clean_query = clean_filename(f"{artist}_{title}")
-                output_file = f"temp/{clean_query}.mp3"
+                clean_title = clean_filename(title)
+                clean_artist = clean_filename(artist)
+                output_file = f"temp/{clean_artist} - {clean_title}.mp3"
                 
-                # Tez yuklash
-                fast_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': output_file.replace('.mp3', '.%(ext)s'),
-                    'quiet': True,
-                    'socket_timeout': 15,
-                    'retries': 2,
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                    }],
-                }
+                opts = ydl_opts_audio_named.copy()
+                opts['outtmpl'] = f"temp/{clean_artist} - {clean_title}.%(ext)s"
                 
-                with yt_dlp.YoutubeDL(fast_opts) as ydl:
+                with yt_dlp.YoutubeDL(opts) as ydl:
                     ydl.download([f"ytsearch1:{query}"])
                 
-                # Yuklangan faylni qidirish
-                mp3_found = None
-                for file in os.listdir("temp"):
-                    if file.endswith('.mp3'):
-                        mp3_found = os.path.join("temp", file)
-                        break
-                
-                if mp3_found and os.path.exists(mp3_found):
-                    with open(mp3_found, 'rb') as f:
+                if os.path.exists(output_file):
+                    with open(output_file, 'rb') as f:
                         bot.send_audio(
                             call.message.chat.id, 
                             f,
@@ -455,10 +479,26 @@ def handle_media_music(call):
                             caption=f"✅ Videodan topildi!\n🎵 {title}\n👤 {artist}"
                         )
                     
-                    os.remove(mp3_found)
+                    os.remove(output_file)
+                else:
+                    # Boshqa nom bilan qidirish
+                    for file in os.listdir("temp"):
+                        if file.endswith('.mp3') and (clean_title[:20] in file or clean_artist[:20] in file):
+                            with open(os.path.join("temp", file), 'rb') as f:
+                                bot.send_audio(
+                                    call.message.chat.id, 
+                                    f,
+                                    title=title[:64],
+                                    performer=artist[:64],
+                                    caption=f"✅ Videodan topildi!\n🎵 {title}\n👤 {artist}"
+                                )
+                            os.remove(os.path.join("temp", file))
+                            break
+                    else:
+                        bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
                     
             except Exception as e:
-                bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n❌ Audio yuklanmadi")
+                bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
                 print(f"Audio yuklash xatosi: {e}")
         else:  
             bot.send_message(call.message.chat.id, "❌ Musiqa topilmadi")  
@@ -561,33 +601,27 @@ def download_audio(call):
         clean_title = clean_filename(title)
         output_file = f"temp/{clean_title}.mp3"
         
-        opts = {  
-            'format': 'bestaudio/best',
-            'outtmpl': output_file.replace('.mp3', '.%(ext)s'),  
-            'quiet': True,  
-            'socket_timeout': 15,
-            'retries': 2,
-            'postprocessors': [{  
-                'key': 'FFmpegExtractAudio',  
-                'preferredcodec': 'mp3',  
-            }]  
-        }  
-
-        with yt_dlp.YoutubeDL(opts) as ydl:  
-            ydl.download([url])  
-
-        # Faylni qidirish
-        found_file = None
-        for file in os.listdir("temp"):
-            if file.endswith('.mp3'):
-                found_file = os.path.join("temp", file)
-                break
+        opts = ydl_opts_audio_named.copy()
+        opts['outtmpl'] = f"temp/{clean_title}.%(ext)s"
         
-        if found_file and os.path.exists(found_file):
-            with open(found_file, 'rb') as f:  
-                bot.send_audio(call.message.chat.id, f, title=title[:64])  
+        with yt_dlp.YoutubeDL(opts) as ydl:  
+            info = ydl.extract_info(url, download=True)
+            actual_title = info.get('title', title)
+        
+        # Faylni qidirish
+        if os.path.exists(output_file):
+            with open(output_file, 'rb') as f:  
+                bot.send_audio(call.message.chat.id, f, title=actual_title[:64])  
 
-            os.remove(found_file)  
+            os.remove(output_file)  
+        else:
+            # Boshqa nom bilan qidirish
+            for file in os.listdir("temp"):
+                if file.endswith('.mp3') and clean_title[:20] in file:
+                    with open(os.path.join("temp", file), 'rb') as f:  
+                        bot.send_audio(call.message.chat.id, f, title=actual_title[:64])
+                    os.remove(os.path.join("temp", file))
+                    break
         
         # Hash faylni o'chirish
         if os.path.exists(f"temp/{h}.txt"):
@@ -600,5 +634,5 @@ def download_audio(call):
 # ================= BOT ISHGA TUSHDI =================
 print("✅ BOT ISHGA TUSHDI!")
 print("📱 Instagram va TikTok qo'llab-quvvatlanadi")
-print("🎵 Tez yuklash faol")
+print("🎵 To'g'ri nom bilan audio yuklash faol")
 bot.infinity_polling()
