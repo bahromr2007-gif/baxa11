@@ -34,10 +34,9 @@ if not os.path.exists("temp"):
     os.makedirs("temp")
 
 # ================= TEZ YUKLASH SETTINGLARI =================
-# TEZLIK uchun konvertatsiyasiz yuklash
 ydl_opts_fast = {
     'format': 'bestaudio/best',
-    'outtmpl': 'temp/%(id)s.%(ext)s',  # ID bilan nomlash
+    'outtmpl': 'temp/%(id)s.%(ext)s',
     'quiet': True,
     'no_warnings': True,
     'socket_timeout': 30,
@@ -52,13 +51,12 @@ ydl_opts_fast = {
     'postprocessors': [{
         'key': 'FFmpegExtractAudio',
         'preferredcodec': 'mp3',
-        'preferredquality': '128',  # Pastroq sifat lekin tezroq
+        'preferredquality': '128',
     }],
 }
 
-# Video yuklash uchun
 ydl_opts_video = {
-    'format': 'best[filesize<50M]',  # 50MB dan katta bo'lmasin
+    'format': 'best[filesize<50M]',
     'quiet': True,
     'no_warnings': True,
     'outtmpl': 'temp/%(id)s.%(ext)s',
@@ -81,6 +79,19 @@ def clean_filename(text):
     if len(text) > 40:
         text = text[:40]
     return text
+
+def format_duration(seconds):
+    """Vaqtni MM:SS formatida qaytarish"""
+    if not seconds:
+        return ""
+    
+    try:
+        seconds = int(seconds)
+        minutes = seconds // 60
+        seconds = seconds % 60
+        return f" ({minutes}:{seconds:02d})"
+    except:
+        return ""
 
 # ================= SHAZAM ANIQLASH =================
 async def recognize_song(audio_bytes):
@@ -160,12 +171,12 @@ def handle_audio(message):
                 }
                 
                 with yt_dlp.YoutubeDL(fast_opts) as ydl:
-                    info = ydl.extract_info(f"ytsearch1:{query}", download=True)
+                    ydl.download([f"ytsearch1:{query}"])
                     
                 if os.path.exists(output_file):
                     # Audio sifatini tekshirish
                     file_size = os.path.getsize(output_file)
-                    if file_size > 1024:  # 1KB dan katta bo'lsa
+                    if file_size > 1024:
                         with open(output_file, 'rb') as f:
                             bot.send_audio(
                                 message.chat.id, 
@@ -179,14 +190,14 @@ def handle_audio(message):
                         bot.delete_message(message.chat.id, msg.message_id)
                     else:
                         bot.edit_message_text(
-                            f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n❌ Fayl yuklanmadi (hajmi juda kichik)",
+                            f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n❌ Fayl yuklanmadi",
                             message.chat.id,
                             msg.message_id
                         )
                 else:
                     # Alternativ usul
                     bot.edit_message_text(
-                        f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n🔗 {result.get('link', '')}",
+                        f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}",
                         message.chat.id,
                         msg.message_id
                     )
@@ -270,7 +281,7 @@ def handle_media_music(call):
         with open(f"temp/{btn_hash}.txt", "r") as f:  
             video_path = f.read().strip()  
 
-        # FAQDAS 10 soniya audio (tezroq)
+        # FAQAT 10 soniya audio (tezroq)
         short_audio_path = video_path.replace('.mp4', '_short.mp3')  
         subprocess.run([  
             'ffmpeg', '-i', video_path, '-t', '10', '-vn', '-acodec', 'mp3', '-y', short_audio_path  
@@ -321,7 +332,7 @@ def handle_media_music(call):
                     os.remove(output_file)
                     
             except Exception as e:
-                bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n🔗 {result.get('link', '')}")
+                bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
         else:  
             bot.send_message(call.message.chat.id, "❌ Musiqa topilmadi")  
 
@@ -375,11 +386,9 @@ def search_music(message):
         for i, song in enumerate(songs, 1):  
             title = song.get("title", "Noma'lum")[:50]
             duration = song.get("duration", 0)  
-            if duration:  
-                m, s = divmod(duration, 60)  
-                time_str = f" ({m}:{s:02d})"  
-            else:  
-                time_str = ""  
+            
+            # Vaqtni formatlash
+            time_str = format_duration(duration)
             
             text_list.append(f"{i}. {title}{time_str}")  
             
@@ -398,7 +407,8 @@ def search_music(message):
         bot.delete_message(message.chat.id, msg.message_id)  
 
     except Exception as e:  
-        bot.edit_message_text(f"❌ Xatolik: {str(e)[:100]}", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"❌ Xatolik", message.chat.id, msg.message_id)
+        print(f"Qidiruv xatosi: {e}")
 
 # ================= AUDIO YUKLASH =================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("song_"))
@@ -436,25 +446,26 @@ def download_audio(call):
         with yt_dlp.YoutubeDL(opts) as ydl:  
             ydl.download([url])  
 
-        if os.path.exists(output_file):
-            with open(output_file, 'rb') as f:  
+        # Faylni qidirish
+        found_file = None
+        for file in os.listdir("temp"):
+            if file.endswith('.mp3') and (clean_title[:20] in file or h in file):
+                found_file = os.path.join("temp", file)
+                break
+        
+        if found_file and os.path.exists(found_file):
+            with open(found_file, 'rb') as f:  
                 bot.send_audio(call.message.chat.id, f, title=title[:64])  
 
-            os.remove(output_file)  
-            os.remove(f"temp/{h}.txt")  
-        else:
-            # Agar .mp3 fayl topilmasa, boshqa formatda qidirish
-            for file in os.listdir("temp"):
-                if file.startswith(clean_title[:20]) and file.endswith(('.mp3', '.m4a', '.webm')):
-                    full_path = os.path.join("temp", file)
-                    with open(full_path, 'rb') as f:  
-                        bot.send_audio(call.message.chat.id, f, title=title[:64])  
-                    os.remove(full_path)
-                    os.remove(f"temp/{h}.txt")
-                    break
+            os.remove(found_file)  
+        
+        # Hash faylni o'chirish
+        if os.path.exists(f"temp/{h}.txt"):
+            os.remove(f"temp/{h}.txt")
 
     except Exception as e:  
         bot.send_message(call.message.chat.id, f"❌ Yuklashda xatolik")
+        print(f"Yuklash xatosi: {e}")
 
 # ================= BOT ISHGA TUSHDI =================
 print("✅ BOT ISHGA TUSHDI!")
