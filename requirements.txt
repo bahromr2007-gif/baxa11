@@ -1,6 +1,8 @@
 python-telegram-bot==20.7
 yt-dlp==2025.11.12
+telebot
 instaloader
 pydub
 requests
 shazamio
+
