@@ -1,3 +1,5 @@
+import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import telebot
 import os
 import asyncio
@@ -13,7 +15,7 @@ import yt_dlp
 # ========================================
 # BOT TOKEN
 BOT_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 # ========================================
 
 # /start komandasi
@@ -496,8 +498,8 @@ def search_music(message):
 
     except Exception as e:  
         bot.edit_message_text(f"❌ Xatolik", message.chat.id, msg.message_id)
-        print(f"Qidiruv xatosi: {e}")
-
+        print("Qidiruv xatosi:", repr(e))
+        
 def show_results_page(chat_id, songs, page, query):
     """Natijalarni sahifalab ko'rsatish"""
     total_songs = len(songs)
@@ -858,4 +860,9 @@ print("✅ BOT ISHGA TUSHDI!")
 print("🎵 10 ta natija + Navigatsiya tugmalari faol")
 print("⬅️ Orqaga | 🏠 Bosh | Oldinga ➡️")
 print("📱 Instagram va TikTok qo'llab-quvvatlanadi")
-bot.infinity_polling()
+bot.infinity_polling(
+    skip_pending=True,
+    none_stop=True,
+    interval=0
+)
+
