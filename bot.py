@@ -201,7 +201,7 @@ async def recognize_song(audio_bytes):
 @bot.message_handler(content_types=['audio', 'voice'])
 def handle_audio(message):
     try:
-        msg = bot.reply_to(message, "🎵 Musiqa aniqlanmoqda...")
+        msg = bot.reply_to(message, "⏳")
 
         if message.audio:  
             file_info = bot.get_file(message.audio.file_id)  
@@ -300,7 +300,7 @@ def handle_instagram_reel(message):
             markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"insta_{btn_hash}"))  
 
             with open(video_path, 'rb') as f:  
-                bot.send_video(message.chat.id, f, reply_markup=markup, caption="🔍")  
+                bot.send_video(message.chat.id, f, reply_markup=markup, caption="")  
 
             with open(f"temp/{btn_hash}.txt", "w") as f:  
                 f.write(video_path)  
