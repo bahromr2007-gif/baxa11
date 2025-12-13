@@ -6,6 +6,7 @@ import subprocess
 import hashlib
 import re
 import json
+import requests
 from telebot import types
 from shazamio import Shazam
 import yt_dlp
@@ -39,32 +40,32 @@ if not os.path.exists("temp"):
 user_sessions = {}
 
 # ================= YUKLASH SETTINGLARI =================
+# Instagram uchun YANGI SIMPLE format
 ydl_opts_instagram = {
     'format': 'best',
     'quiet': True,
     'no_warnings': True,
-    'outtmpl': 'temp/%(id)s.%(ext)s',
-    'socket_timeout': 60,
-    'retries': 10,
-    'fragment_retries': 10,
+    'outtmpl': 'temp/instagram_%(id)s.%(ext)s',
+    'socket_timeout': 30,
+    'retries': 3,
     'ignoreerrors': True,
-    'no_check_certificate': True,
-    'geo_bypass': True,
-    'geo_bypass_country': 'US',
+    'extractor_args': {
+        'instagram': {
+            'format': 'best',
+            'post_data': {}
+        }
+    },
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
     },
 }
 
+# TikTok uchun
 ydl_opts_tiktok = {
     'format': 'best[height<=720]',
     'quiet': True,
     'no_warnings': True,
-    'outtmpl': 'temp/%(id)s.%(ext)s',
+    'outtmpl': 'temp/tiktok_%(id)s.%(ext)s',
     'socket_timeout': 30,
     'retries': 3,
     'http_headers': {
@@ -72,6 +73,7 @@ ydl_opts_tiktok = {
     },
 }
 
+# Audio yuklash uchun (qo'shiq nomi bilan)
 ydl_opts_audio_named = {
     'format': 'bestaudio/best',
     'outtmpl': 'temp/%(title)s.%(ext)s',
@@ -96,7 +98,8 @@ def clean_filename(text):
     if not text:
         return "musiqa"
     
-    for char in r'<>:"/\|?*':
+    # Maxsus belgilarni olib tashlash
+    for char in r'<>:"/\|?*#%&{}[]':
         text = text.replace(char, '')
     
     text = text.replace(' ', '_')
@@ -150,28 +153,30 @@ def is_tiktok_url(url):
             return True
     return False
 
-def extract_instagram_video_simple(url):
-    """Instagram videoni oddiy usulda yuklash"""
+def download_instagram_video_direct(url):
+    """Instagram videoni to'g'ridan-to'g'ri yuklash"""
     try:
-        with yt_dlp.YoutubeDL(ydl_opts_instagram) as ydl:
+        # Oddiy usul: yt-dlp bilan
+        opts = {
+            'format': 'best',
+            'quiet': True,
+            'no_warnings': True,
+            'outtmpl': 'temp/insta_%(id)s.%(ext)s',
+            'socket_timeout': 30,
+        }
+        
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            video_id = info.get('id', 'instagram_video')
-            title = info.get('title', 'Instagram Video')
             
+            # Faylni qidirish
             for file in os.listdir("temp"):
-                if file.startswith(video_id) or video_id in file:
-                    return os.path.join("temp", file), title
-            
-            for file in os.listdir("temp"):
-                if file.endswith(('.mp4', '.webm', '.mkv')):
-                    file_path = os.path.join("temp", file)
-                    if os.path.getctime(file_path) > os.path.getctime("temp") + 5:
-                        return file_path, title
-                        
-        return None, title
+                if file.startswith("insta_") and file.endswith(('.mp4', '.webm', '.mkv')):
+                    return os.path.join("temp", file), info.get('title', 'Instagram Video')
+        
+        return None, "Instagram Video"
         
     except Exception as e:
-        print(f"Instagram xatosi: {e}")
+        print(f"Instagram yuklash xatosi: {e}")
         return None, "Instagram Video"
 
 # ================= SHAZAM ANIQLASH =================
@@ -227,54 +232,77 @@ def handle_audio(message):
                 msg.message_id
             )  
               
-            query = f"{artist} {title} audio"
+            # TEZ YUKLASH
+            query = f"{artist} {title}"
             try:
                 clean_title = clean_filename(title)
                 clean_artist = clean_filename(artist)
-                output_file = f"temp/{clean_artist} - {clean_title}.mp3"
                 
-                opts = ydl_opts_audio_named.copy()
-                opts['outtmpl'] = f"temp/{clean_artist} - {clean_title}.%(ext)s"
+                # YANGI: Video nomi bilan qidirish
+                opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': f'temp/{clean_artist}_{clean_title}.%(ext)s',
+                    'quiet': True,
+                    'socket_timeout': 20,
+                    'retries': 2,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                }
                 
                 with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(f"ytsearch1:{query}", download=True)
+                    # YANGI: video qo'shib qidirish (ko'proq natija uchun)
+                    info = ydl.extract_info(f"ytsearch5:{query} official audio", download=True)
                 
-                if os.path.exists(output_file):
-                    with open(output_file, 'rb') as f:
-                        bot.send_audio(
-                            message.chat.id, 
-                            f,
-                            title=title[:64],
-                            performer=artist[:64],
-                            caption=f"🎵 {title}\n👤 {artist}"
-                        )
+                # Faylni qidirish
+                mp3_files = []
+                for file in os.listdir("temp"):
+                    if file.endswith('.mp3') and (clean_artist[:10].lower() in file.lower() or clean_title[:10].lower() in file.lower()):
+                        mp3_files.append(os.path.join("temp", file))
+                
+                if mp3_files:
+                    # Eng katta faylni tanlash (to'liq bo'lsa)
+                    mp3_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
+                    best_file = mp3_files[0]
                     
-                    os.remove(output_file)
-                    bot.delete_message(message.chat.id, msg.message_id)
-                else:
-                    for file in os.listdir("temp"):
-                        if file.endswith('.mp3') and (clean_title[:20] in file or clean_artist[:20] in file):
-                            with open(os.path.join("temp", file), 'rb') as f:
-                                bot.send_audio(
-                                    message.chat.id, 
-                                    f,
-                                    title=title[:64],
-                                    performer=artist[:64],
-                                    caption=f"🎵 {title}\n👤 {artist}"
-                                )
-                            os.remove(os.path.join("temp", file))
-                            bot.delete_message(message.chat.id, msg.message_id)
-                            break
+                    file_size = os.path.getsize(best_file)
+                    if file_size > 500000:  # 500KB dan katta bo'lsa
+                        with open(best_file, 'rb') as f:
+                            bot.send_audio(
+                                message.chat.id, 
+                                f,
+                                title=title[:64],
+                                performer=artist[:64],
+                                caption=f"🎵 {title}\n👤 {artist}"
+                            )
+                        
+                        os.remove(best_file)
+                        bot.delete_message(message.chat.id, msg.message_id)
+                        
+                        # Boshqa fayllarni ham tozalash
+                        for mp3_file in mp3_files[1:]:
+                            try:
+                                os.remove(mp3_file)
+                            except:
+                                pass
                     else:
                         bot.edit_message_text(
-                            f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}",
+                            f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n❌ Fayl juda kichik",
                             message.chat.id,
                             msg.message_id
                         )
+                else:
+                    bot.edit_message_text(
+                        f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n❌ Audio yuklanmadi",
+                        message.chat.id,
+                        msg.message_id
+                    )
                     
             except Exception as e:
                 bot.edit_message_text(
-                    f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n❌ Yuklashda xatolik",
+                    f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}",
                     message.chat.id,
                     msg.message_id
                 )
@@ -292,7 +320,8 @@ def handle_instagram_reel(message):
         url = message.text.strip()
         msg = bot.reply_to(message, "📱 Instagram videoni yuklamoqda...")
 
-        video_path, video_title = extract_instagram_video_simple(url)
+        # To'g'ridan-to'g'ri yuklash
+        video_path, video_title = download_instagram_video_direct(url)
         
         if video_path and os.path.exists(video_path):
             btn_hash = create_hash(video_path)
@@ -308,14 +337,18 @@ def handle_instagram_reel(message):
             bot.delete_message(message.chat.id, msg.message_id)
         else:
             bot.edit_message_text(
-                "❌ Instagram video yuklanmadi\n"
-                "Iltimos video ommaviy bo'lishi kerak",
+                "❌ Instagram video yuklanmadi\n\n"
+                "Sabablari:\n"
+                "1. Video private bo'lishi mumkin\n"
+                "2. Instagram blok qo'ygan bo'lishi mumkin\n"
+                "3. Boshqa link yuboring yoki\n"
+                "4. Videoni audio fayl sifatida yuboring",
                 message.chat.id,
                 msg.message_id
             )
 
     except Exception as e:  
-        bot.reply_to(message, f"❌ Instagram video yuklanmadi")
+        bot.reply_to(message, "❌ Instagram video yuklanmadi")
 
 # ================= TIKTOK HANDLER =================
 @bot.message_handler(func=lambda m: is_tiktok_url(m.text))
@@ -327,13 +360,14 @@ def handle_tiktok(message):
         with yt_dlp.YoutubeDL(ydl_opts_tiktok) as ydl:  
             info = ydl.extract_info(url, download=True)
             
+            # Faylni qidirish
             video_files = []
             for file in os.listdir("temp"):
-                if file.endswith(('.mp4', '.webm')):
+                if file.startswith("tiktok_") and file.endswith(('.mp4', '.webm')):
                     video_files.append(os.path.join("temp", file))
             
             if video_files:
-                video_path = max(video_files, key=os.path.getctime)
+                video_path = video_files[0]
                 
                 btn_hash = create_hash(video_path)
                 markup = types.InlineKeyboardMarkup()  
@@ -350,7 +384,7 @@ def handle_tiktok(message):
                 bot.edit_message_text("❌ TikTok video yuklanmadi", message.chat.id, msg.message_id)
 
     except Exception as e:  
-        bot.reply_to(message, f"❌ TikTok video yuklanmadi")
+        bot.reply_to(message, "❌ TikTok video yuklanmadi")
 
 # ================= VIDEO MUSIQANI ANIQLASH =================
 @bot.callback_query_handler(func=lambda call: call.data.startswith(("insta_", "tiktok_")))
@@ -366,18 +400,21 @@ def handle_media_music(call):
             bot.send_message(call.message.chat.id, "❌ Video fayl topilmadi")
             return
 
-        short_audio_path = video_path.rsplit('.', 1)[0] + '_short.mp3'
+        # FAKAT 15 soniya audio
+        short_audio_path = video_path.rsplit('.', 1)[0] + '_audio.mp3'
         
         try:
             subprocess.run([
                 'ffmpeg', '-i', video_path, 
-                '-t', '10', 
+                '-t', '15', 
                 '-vn', 
                 '-acodec', 'mp3', 
+                '-ab', '192k',
+                '-ar', '44100',
                 '-y', short_audio_path
             ], capture_output=True, timeout=30, check=False)
-        except:
-            pass
+        except Exception as e:
+            print(f"FFmpeg xatosi: {e}")
 
         if not os.path.exists(short_audio_path):
             bot.send_message(call.message.chat.id, "❌ Audio ajratishda xatolik")
@@ -397,20 +434,41 @@ def handle_media_music(call):
               
             bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")  
               
-            query = f"{artist} {title} audio"
+            # YANGI: Kuchliroq qidiruv
+            query = f"{artist} {title} official"
             try:
                 clean_title = clean_filename(title)
                 clean_artist = clean_filename(artist)
-                output_file = f"temp/{clean_artist} - {clean_title}.mp3"
                 
-                opts = ydl_opts_audio_named.copy()
-                opts['outtmpl'] = f"temp/{clean_artist} - {clean_title}.%(ext)s"
+                # 3 ta natija qidirish
+                opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': f'temp/{clean_artist}_{clean_title}_%(id)s.%(ext)s',
+                    'quiet': True,
+                    'socket_timeout': 20,
+                    'retries': 2,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                }
                 
                 with yt_dlp.YoutubeDL(opts) as ydl:
-                    ydl.download([f"ytsearch1:{query}"])
+                    info = ydl.extract_info(f"ytsearch3:{query}", download=True)
                 
-                if os.path.exists(output_file):
-                    with open(output_file, 'rb') as f:
+                # MP3 fayllarni qidirish
+                mp3_files = []
+                for file in os.listdir("temp"):
+                    if file.endswith('.mp3') and (clean_artist[:10].lower() in file.lower() or clean_title[:10].lower() in file.lower() or "audio" in file.lower()):
+                        mp3_files.append(os.path.join("temp", file))
+                
+                if mp3_files:
+                    # Eng katta faylni tanlash
+                    mp3_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
+                    best_file = mp3_files[0]
+                    
+                    with open(best_file, 'rb') as f:
                         bot.send_audio(
                             call.message.chat.id, 
                             f,
@@ -419,25 +477,18 @@ def handle_media_music(call):
                             caption=f"✅ Videodan topildi!\n🎵 {title}\n👤 {artist}"
                         )
                     
-                    os.remove(output_file)
+                    # Barcha fayllarni tozalash
+                    for mp3_file in mp3_files:
+                        try:
+                            os.remove(mp3_file)
+                        except:
+                            pass
                 else:
-                    for file in os.listdir("temp"):
-                        if file.endswith('.mp3') and (clean_title[:20] in file or clean_artist[:20] in file):
-                            with open(os.path.join("temp", file), 'rb') as f:
-                                bot.send_audio(
-                                    call.message.chat.id, 
-                                    f,
-                                    title=title[:64],
-                                    performer=artist[:64],
-                                    caption=f"✅ Videodan topildi!\n🎵 {title}\n👤 {artist}"
-                                )
-                            os.remove(os.path.join("temp", file))
-                            break
-                    else:
-                        bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
+                    bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
                     
             except Exception as e:
                 bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
+                print(f"Audio yuklash xatosi: {e}")
         else:  
             bot.send_message(call.message.chat.id, "❌ Musiqa topilmadi")  
 
@@ -489,10 +540,10 @@ def search_music(message):
             'page': 1
         }
         
-        # 1-10 qo'shiqlarni ko'rsatish
-        show_results_page(message.chat.id, songs, 1, query)
+        # Natijalarni ko'rsatish
+        show_results_page(user_id, songs, 1, query)
         
-        bot.delete_message(message.chat.id, msg.message_id)  
+        bot.delete_message(user_id, msg.message_id)  
 
     except Exception as e:  
         bot.edit_message_text(f"❌ Xatolik", message.chat.id, msg.message_id)
@@ -500,19 +551,13 @@ def search_music(message):
 
 def show_results_page(chat_id, songs, page, query):
     """Natijalarni sahifalab ko'rsatish"""
-    total_songs = len(songs)
     start_idx = (page - 1) * 10
-    end_idx = min(start_idx + 10, total_songs)
+    end_idx = min(start_idx + 10, len(songs))
     
-    # Matn ro'yxati  
     text_list = [f"🔍 '{query}' uchun natijalar ({start_idx+1}-{end_idx}):\n"]  
     
-    # Inline tugmalar uchun
     markup = types.InlineKeyboardMarkup(row_width=5)
-    
-    # Birinchi qator: 1-5 raqamlar
     first_row = []
-    # Ikkinchi qator: 6-10 raqamlar
     second_row = []
     
     for i in range(start_idx, end_idx):
@@ -527,7 +572,6 @@ def show_results_page(chat_id, songs, page, query):
         
         text_list.append(f"{idx}. {title}{time_str}")  
         
-        # Inline tugma
         url = song.get("url", song.get("webpage_url", ""))
         if url:
             h = create_hash(url)
@@ -539,20 +583,17 @@ def show_results_page(chat_id, songs, page, query):
             else:
                 second_row.append(types.InlineKeyboardButton(str(idx), callback_data=f"song_{h}"))
     
-    # Tugmalarni qo'shish
     if first_row:
         markup.add(*first_row)
     if second_row:
         markup.add(*second_row)
     
-    # NAVIGATSIYA tugmalari
-    nav_buttons = []
-    
-    # FAKAT bir sahifa bo'lsa ham, ORQAGA va OLDINGA tugmalarini qo'shamiz
-    nav_buttons.append(types.InlineKeyboardButton("⬅️ Orqaga", callback_data="nav_back"))
-    nav_buttons.append(types.InlineKeyboardButton("🏠 Bosh sahifa", callback_data="nav_home"))
-    nav_buttons.append(types.InlineKeyboardButton("Oldinga ➡️", callback_data="nav_next"))
-    
+    # Navigatsiya tugmalari
+    nav_buttons = [
+        types.InlineKeyboardButton("⬅️ Orqaga", callback_data="nav_back"),
+        types.InlineKeyboardButton("🏠 Bosh", callback_data="nav_home"),
+        types.InlineKeyboardButton("Oldinga ➡️", callback_data="nav_next")
+    ]
     markup.add(*nav_buttons)
     
     bot.send_message(chat_id, "\n".join(text_list), reply_markup=markup)
@@ -575,28 +616,47 @@ def download_audio(call):
     
     try:  
         clean_title = clean_filename(title)
-        output_file = f"temp/{clean_title}.mp3"
         
-        opts = ydl_opts_audio_named.copy()
-        opts['outtmpl'] = f"temp/{clean_title}.%(ext)s"
+        # YANGI: To'g'ri nom bilan yuklash
+        opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': f'temp/{clean_title}_%(id)s.%(ext)s',
+            'quiet': True,
+            'socket_timeout': 20,
+            'retries': 2,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
         
         with yt_dlp.YoutubeDL(opts) as ydl:  
             info = ydl.extract_info(url, download=True)
             actual_title = info.get('title', title)
         
-        if os.path.exists(output_file):
-            with open(output_file, 'rb') as f:  
-                bot.send_audio(call.message.chat.id, f, title=actual_title[:64])  
-
-            os.remove(output_file)  
-        else:
-            for file in os.listdir("temp"):
-                if file.endswith('.mp3') and clean_title[:20] in file:
-                    with open(os.path.join("temp", file), 'rb') as f:  
-                        bot.send_audio(call.message.chat.id, f, title=actual_title[:64])
-                    os.remove(os.path.join("temp", file))
-                    break
+        # Faylni qidirish
+        mp3_files = []
+        for file in os.listdir("temp"):
+            if file.endswith('.mp3') and (clean_title[:15].lower() in file.lower() or h in file):
+                mp3_files.append(os.path.join("temp", file))
         
+        if mp3_files:
+            # Eng katta faylni tanlash
+            mp3_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
+            best_file = mp3_files[0]
+            
+            with open(best_file, 'rb') as f:  
+                bot.send_audio(call.message.chat.id, f, title=actual_title[:64])
+            
+            # Barcha fayllarni tozalash
+            for mp3_file in mp3_files:
+                try:
+                    os.remove(mp3_file)
+                except:
+                    pass
+        
+        # Hash faylni o'chirish
         if os.path.exists(f"temp/{h}.txt"):
             os.remove(f"temp/{h}.txt")
 
@@ -615,17 +675,14 @@ def handle_navigation(call):
     
     session = user_sessions[user_id]
     query = session['query']
-    songs = session['songs']
-    current_page = session['page']
     
-    # Oldingi xabarni o'chirish
     try:
         bot.delete_message(user_id, call.message.message_id)
     except:
         pass
     
     if call.data == "nav_back":
-        # Orqaga qaytish - yangi qidiruv
+        # Orqaga - yangi qidiruv
         msg = bot.send_message(user_id, f"🔍 '{query}' qayta qidirilmoqda...")
         
         try:
@@ -646,151 +703,31 @@ def handle_navigation(call):
             bot.send_message(user_id, "❌ Qidiruvda xatolik")
     
     elif call.data == "nav_home":
-        # Bosh sahifa - /start
-        text = (
-            "👋 Salom! Men musiqa topuvchi botman 🎵\n\n"
-            "Menga quyidagilarni yuborishingiz mumkin:\n"
-            "1. 📱 Instagram Reel linki\n"
-            "2. 📱 TikTok video linki\n"
-            "3. 🎤 Qo'shiq nomi yoki ijrochi ismi\n"
-            "4. 🎵 Audio fayl (musiqani aniqlash uchun)\n\n"
-            "Yana qo'shiq nomi yoki ijrochi ismini yuboring!"
-        )
+        # Bosh sahifa
+        text = "🔍 Qo'shiq nomi yoki ijrochi ismini yuboring:"
         bot.send_message(user_id, text)
     
     elif call.data == "nav_next":
-        # Oldinga - yangi 10 ta natija
-        # Agar hozirgi sahifa 1 bo'lsa, keyingi sahifa (11-20)
-        if current_page == 1:
-            # Yangi qidiruv: 11-20 natijalar
-            msg = bot.send_message(user_id, f"🔍 '{query}' - keyingi natijalar qidirilmoqda...")
-            
-            try:
-                # Keyingi 10 ta natija uchun
-                with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:  
-                    info = ydl.extract_info(f"ytsearch20:{query}", download=False)  
-                    songs = info.get('entries', [])  
-                
-                if songs and len(songs) > 10:
-                    # Faqat 11-20 natijalar
-                    user_sessions[user_id]['songs'] = songs
-                    user_sessions[user_id]['page'] = 2
-                    
-                    # 11-20 natijalarni ko'rsatish
-                    show_results_page_next(user_id, songs, 11, 20, query)
-                else:
-                    bot.send_message(user_id, "❌ Ko'proq natija topilmadi")
-                
-                bot.delete_message(user_id, msg.message_id)
-                
-            except Exception as e:
-                bot.send_message(user_id, "❌ Qidiruvda xatolik")
-
-def show_results_page_next(chat_id, songs, start_num, end_num, query):
-    """Keyingi natijalarni ko'rsatish (11-20)"""
-    start_idx = start_num - 1
-    end_idx = min(end_num, len(songs))
-    
-    text_list = [f"🔍 '{query}' uchun natijalar ({start_num}-{end_num}):\n"]  
-    
-    markup = types.InlineKeyboardMarkup(row_width=5)
-    first_row = []
-    second_row = []
-    
-    for i in range(start_idx, end_idx):
-        song = songs[i]
-        if not song:
-            continue
-            
-        idx = i + 1
-        title = song.get("title", "Noma'lum")[:50]
-        duration = song.get("duration", 0)  
-        time_str = format_duration(duration)
-        
-        text_list.append(f"{idx}. {title}{time_str}")  
-        
-        url = song.get("url", song.get("webpage_url", ""))
-        if url:
-            h = create_hash(url)
-            with open(f"temp/{h}.txt", "w") as f:  
-                f.write(f"{url}|{title}")  
-            
-            if idx <= 15:
-                first_row.append(types.InlineKeyboardButton(str(idx), callback_data=f"song_{h}"))
-            else:
-                second_row.append(types.InlineKeyboardButton(str(idx), callback_data=f"song_{h}"))
-    
-    if first_row:
-        markup.add(*first_row)
-    if second_row:
-        markup.add(*second_row)
-    
-    # Navigatsiya tugmalari
-    nav_buttons = []
-    nav_buttons.append(types.InlineKeyboardButton("⬅️ Avvalgi", callback_data="nav_prev_page"))
-    nav_buttons.append(types.InlineKeyboardButton("🏠 Bosh", callback_data="nav_home"))
-    nav_buttons.append(types.InlineKeyboardButton("Yana ➡️", callback_data="nav_more"))
-    
-    markup.add(*nav_buttons)
-    
-    bot.send_message(chat_id, "\n".join(text_list), reply_markup=markup)
-
-# ================= QO'SHIMCHA NAVIGATSIYA =================
-@bot.callback_query_handler(func=lambda c: c.data in ["nav_prev_page", "nav_more"])
-def handle_more_navigation(call):
-    user_id = call.message.chat.id
-    
-    if user_id not in user_sessions:
-        bot.answer_callback_query(call.id, "❌ Session topilmadi")
-        return
-    
-    session = user_sessions[user_id]
-    query = session['query']
-    
-    try:
-        bot.delete_message(user_id, call.message.message_id)
-    except:
-        pass
-    
-    if call.data == "nav_prev_page":
-        # Avvalgi sahifaga qaytish (1-10)
-        msg = bot.send_message(user_id, f"🔍 '{query}' qayta qidirilmoqda...")
+        # Keyingi 10 ta natija
+        msg = bot.send_message(user_id, f"🔍 '{query}' - keyingi natijalar...")
         
         try:
             with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:  
-                info = ydl.extract_info(f"ytsearch10:{query}", download=False)  
+                info = ydl.extract_info(f"ytsearch20:{query}", download=False)  
                 songs = info.get('entries', [])  
             
-            if songs:
+            if songs and len(songs) > 10:
                 user_sessions[user_id]['songs'] = songs
-                user_sessions[user_id]['page'] = 1
-                show_results_page(user_id, songs, 1, query)
-            else:
-                bot.send_message(user_id, "❌ Hech qanday natija topilmadi")
-            
-            bot.delete_message(user_id, msg.message_id)
-            
-        except Exception as e:
-            bot.send_message(user_id, "❌ Qidiruvda xatolik")
-    
-    elif call.data == "nav_more":
-        # Yana keyingi natijalar (21-30)
-        msg = bot.send_message(user_id, f"🔍 '{query}' - yana natijalar qidirilmoqda...")
-        
-        try:
-            with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:  
-                info = ydl.extract_info(f"ytsearch30:{query}", download=False)  
-                songs = info.get('entries', [])  
-            
-            if songs and len(songs) > 20:
-                user_sessions[user_id]['songs'] = songs
-                user_sessions[user_id]['page'] = 3
+                user_sessions[user_id]['page'] = 2
                 
-                # 21-30 natijalarni ko'rsatish
-                text_list = [f"🔍 '{query}' uchun natijalar (21-30):\n"]  
+                # 11-20 natijalarni ko'rsatish
+                start_idx = 10
+                end_idx = min(20, len(songs))
+                
+                text_list = [f"🔍 '{query}' uchun natijalar (11-{end_idx}):\n"]  
                 markup = types.InlineKeyboardMarkup(row_width=5)
                 
-                for i in range(20, min(30, len(songs))):
+                for i in range(start_idx, end_idx):
                     song = songs[i]
                     if not song:
                         continue
@@ -808,15 +745,15 @@ def handle_more_navigation(call):
                         with open(f"temp/{h}.txt", "w") as f:  
                             f.write(f"{url}|{title}")  
                         
-                        if idx <= 25:
+                        if idx <= 15:
                             markup.add(types.InlineKeyboardButton(str(idx), callback_data=f"song_{h}"))
                         else:
-                            # 26-30 alohida qator
+                            # Alohida qator
                             pass
                 
                 # Navigatsiya
                 nav_buttons = [
-                    types.InlineKeyboardButton("⬅️ Avvalgi", callback_data="nav_prev_to_11_20"),
+                    types.InlineKeyboardButton("⬅️ Avvalgi", callback_data="nav_prev"),
                     types.InlineKeyboardButton("🏠 Bosh", callback_data="nav_home")
                 ]
                 markup.add(*nav_buttons)
@@ -830,8 +767,8 @@ def handle_more_navigation(call):
         except Exception as e:
             bot.send_message(user_id, "❌ Qidiruvda xatolik")
 
-@bot.callback_query_handler(func=lambda c: c.data == "nav_prev_to_11_20")
-def handle_prev_to_11_20(call):
+@bot.callback_query_handler(func=lambda c: c.data == "nav_prev")
+def handle_nav_prev(call):
     user_id = call.message.chat.id
     
     if user_id not in user_sessions:
@@ -840,22 +777,39 @@ def handle_prev_to_11_20(call):
     
     session = user_sessions[user_id]
     query = session['query']
-    songs = session['songs']
+    songs = session.get('songs', [])
     
     try:
         bot.delete_message(user_id, call.message.message_id)
     except:
         pass
     
-    if songs and len(songs) > 10:
-        user_sessions[user_id]['page'] = 2
-        show_results_page_next(user_id, songs, 11, 20, query)
+    if songs:
+        user_sessions[user_id]['page'] = 1
+        show_results_page(user_id, songs[:10], 1, query)
     else:
-        bot.send_message(user_id, "❌ Natijalar topilmadi")
+        msg = bot.send_message(user_id, f"🔍 '{query}' qayta qidirilmoqda...")
+        
+        try:
+            with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:  
+                info = ydl.extract_info(f"ytsearch10:{query}", download=False)  
+                songs = info.get('entries', [])  
+            
+            if songs:
+                user_sessions[user_id]['songs'] = songs
+                show_results_page(user_id, songs, 1, query)
+            else:
+                bot.send_message(user_id, "❌ Hech qanday natija topilmadi")
+            
+            bot.delete_message(user_id, msg.message_id)
+            
+        except Exception as e:
+            bot.send_message(user_id, "❌ Qidiruvda xatolik")
 
 # ================= BOT ISHGA TUSHDI =================
 print("✅ BOT ISHGA TUSHDI!")
-print("🎵 10 ta natija + Navigatsiya tugmalari faol")
+print("🎵 10 ta natija + Navigatsiya tugmalari")
 print("⬅️ Orqaga | 🏠 Bosh | Oldinga ➡️")
-print("📱 Instagram va TikTok qo'llab-quvvatlanadi")
+print("📱 Instagram - oddiy yuklash usuli")
+print("🎯 Qo'shiq topish yaxshilandi")
 bot.infinity_polling()
