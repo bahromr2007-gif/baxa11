@@ -290,7 +290,7 @@ def handle_audio(message):
 def handle_instagram_reel(message):
     try:
         url = message.text.strip()
-        msg = bot.reply_to(message, "📱 Instagram videoni yuklamoqda...")
+        msg = bot.reply_to(message, "🔍")
 
         video_path, video_title = extract_instagram_video_simple(url)
         
@@ -300,7 +300,7 @@ def handle_instagram_reel(message):
             markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"insta_{btn_hash}"))  
 
             with open(video_path, 'rb') as f:  
-                bot.send_video(message.chat.id, f, reply_markup=markup, caption="📱 Instagram video")  
+                bot.send_video(message.chat.id, f, reply_markup=markup, caption="🔍")  
 
             with open(f"temp/{btn_hash}.txt", "w") as f:  
                 f.write(video_path)  
@@ -549,9 +549,9 @@ def show_results_page(chat_id, songs, page, query):
     nav_buttons = []
     
     # FAKAT bir sahifa bo'lsa ham, ORQAGA va OLDINGA tugmalarini qo'shamiz
-    nav_buttons.append(types.InlineKeyboardButton("⬅️ Orqaga", callback_data="nav_back"))
-    nav_buttons.append(types.InlineKeyboardButton("🏠 Bosh sahifa", callback_data="nav_home"))
-    nav_buttons.append(types.InlineKeyboardButton("Oldinga ➡️", callback_data="nav_next"))
+    nav_buttons.append(types.InlineKeyboardButton("⬅️", callback_data="nav_back"))
+    nav_buttons.append(types.InlineKeyboardButton("❌", callback_data="nav_home"))
+    nav_buttons.append(types.InlineKeyboardButton("➡️", callback_data="nav_next"))
     
     markup.add(*nav_buttons)
     
@@ -727,9 +727,9 @@ def show_results_page_next(chat_id, songs, start_num, end_num, query):
     
     # Navigatsiya tugmalari
     nav_buttons = []
-    nav_buttons.append(types.InlineKeyboardButton("⬅️ Avvalgi", callback_data="nav_prev_page"))
-    nav_buttons.append(types.InlineKeyboardButton("🏠 Bosh", callback_data="nav_home"))
-    nav_buttons.append(types.InlineKeyboardButton("Yana ➡️", callback_data="nav_more"))
+    nav_buttons.append(types.InlineKeyboardButton("⬅️", callback_data="nav_prev_page"))
+    nav_buttons.append(types.InlineKeyboardButton("❌", callback_data="nav_home"))
+    nav_buttons.append(types.InlineKeyboardButton("➡️", callback_data="nav_more"))
     
     markup.add(*nav_buttons)
     
