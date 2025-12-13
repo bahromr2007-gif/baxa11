@@ -1,5 +1,4 @@
 import sys
-sys.stdout.reconfigure(encoding="utf-8")
 import telebot.apihelper
 import telebot
 import os
@@ -12,10 +11,11 @@ import json
 from telebot import types
 from shazamio import Shazam
 import yt_dlp
+sys.stdout.reconfigure(encoding="utf-8")
 telebot.apihelper.delete_webhook = True
 # ========================================
 # BOT TOKEN
-BOT_TOKEN = "8575775719:AAGzviNnhPr_hVpqO4cUMrPlY0K498d_9I8"
+BOT_TOKEN = "8575775719:AAFjR9wnpNEDI-3pzWOeQ1NnyaOnrfgpOk4"
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 # ========================================
 
