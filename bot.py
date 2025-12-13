@@ -222,7 +222,7 @@ def handle_audio(message):
             artist = result['artist']  
               
             bot.edit_message_text(
-                f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}\n\n⏳ Tez yuklanmoqda...", 
+                f"⏳", 
                 message.chat.id, 
                 msg.message_id
             )  
@@ -267,7 +267,7 @@ def handle_audio(message):
                             break
                     else:
                         bot.edit_message_text(
-                            f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}",
+                            f"⏳",
                             message.chat.id,
                             msg.message_id
                         )
@@ -290,7 +290,7 @@ def handle_audio(message):
 def handle_instagram_reel(message):
     try:
         url = message.text.strip()
-        msg = bot.reply_to(message, "🔍")
+        msg = bot.reply_to(message, "⏳")
 
         video_path, video_title = extract_instagram_video_simple(url)
         
@@ -322,7 +322,7 @@ def handle_instagram_reel(message):
 def handle_tiktok(message):
     try:
         url = message.text.strip()
-        msg = bot.reply_to(message, "📱 TikTok videoni yuklamoqda...")
+        msg = bot.reply_to(message, "⏳")
 
         with yt_dlp.YoutubeDL(ydl_opts_tiktok) as ydl:  
             info = ydl.extract_info(url, download=True)
@@ -340,7 +340,7 @@ def handle_tiktok(message):
                 markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"tiktok_{btn_hash}"))  
 
                 with open(video_path, 'rb') as f:  
-                    bot.send_video(message.chat.id, f, reply_markup=markup, caption="📱 TikTok video")  
+                    bot.send_video(message.chat.id, f, reply_markup=markup, caption="")  
 
                 with open(f"temp/{btn_hash}.txt", "w") as f:  
                     f.write(video_path)  
@@ -395,7 +395,7 @@ def handle_media_music(call):
             title = result['title']  
             artist = result['artist']  
               
-            bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")  
+            bot.send_message(call.message.chat.id, f"⏳")  
               
             query = f"{artist} {title} audio"
             try:
@@ -416,7 +416,7 @@ def handle_media_music(call):
                             f,
                             title=title[:64],
                             performer=artist[:64],
-                            caption=f"✅ Videodan topildi!\n🎵 {title}\n👤 {artist}"
+                            caption=f""
                         )
                     
                     os.remove(output_file)
@@ -429,15 +429,15 @@ def handle_media_music(call):
                                     f,
                                     title=title[:64],
                                     performer=artist[:64],
-                                    caption=f"✅ Videodan topildi!\n🎵 {title}\n👤 {artist}"
+                                    caption=f""
                                 )
                             os.remove(os.path.join("temp", file))
                             break
                     else:
-                        bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
+                        bot.send_message(call.message.chat.id, f"⏳")
                     
             except Exception as e:
-                bot.send_message(call.message.chat.id, f"✅ Musiqa topildi!\n🎵 {title}\n👤 {artist}")
+                bot.send_message(call.message.chat.id, f"⏳}")
         else:  
             bot.send_message(call.message.chat.id, "❌ Musiqa topilmadi")  
 
