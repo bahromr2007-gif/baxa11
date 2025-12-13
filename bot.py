@@ -437,7 +437,7 @@ def handle_media_music(call):
                         bot.send_message(call.message.chat.id, f"⏳")
                     
             except Exception as e:
-                bot.send_message(call.message.chat.id, f"⏳}")
+                bot.send_message(call.message.chat.id, f"⏳")
         else:  
             bot.send_message(call.message.chat.id, "❌ Musiqa topilmadi")  
 
