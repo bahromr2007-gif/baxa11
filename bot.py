@@ -14,25 +14,10 @@ import yt_dlp
 sys.stdout.reconfigure(encoding="utf-8")
 telebot.apihelper.delete_webhook = True
 # ========================================
-# BOT TOKEN — O'ZGARTIRISHINGIZ KERAK (xavfsizlik uchun)
+# BOT TOKEN
 BOT_TOKEN = "8575775719:AAFjR9wnpNEDI-3pzWOeQ1NnyaOnrfgpOk4"
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 # ========================================
-
-# /start komandasi
-@bot.message_handler(commands=['start'])
-def start_message(message):
-    text = (
-        "👋 Salom! Men musiqa topuvchi botman 🎵\n\n"
-        "Menga quyidagilarni yuborishingiz mumkin:\n"
-        "1. 📱 Instagram Reel linki\n"
-        "2. 📱 TikTok video linki\n"
-        "3. 🎤 Qo'shiq nomi yoki ijrochi ismi\n"
-        "4. 🎵 Audio fayl (musiqani aniqlash uchun)\n\n"
-        "👤 Telegram: @Rustamov_v1\n"
-        "📸 Instagram: https://www.instagram.com/bahrombekh_fx?igsh=Y2J0NnFpNm9icTFp "
-    )
-    bot.send_message(message.chat.id, text)
 
 # TEMP papka yaratish
 if not os.path.exists("temp"):
@@ -43,15 +28,23 @@ user_sessions = {}
 
 # ================= YUKLASH SETTINGLARI =================
 ydl_opts_instagram = {
-    'format': 'best[height<=720]',
+    'format': 'best',
     'quiet': True,
     'no_warnings': True,
-    'noplaylist': True,
     'outtmpl': 'temp/%(id)s.%(ext)s',
     'socket_timeout': 60,
-    'retries': 5,
+    'retries': 10,
+    'fragment_retries': 10,
+    'ignoreerrors': True,
+    'no_check_certificate': True,
+    'geo_bypass': True,
+    'geo_bypass_country': 'US',
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
     },
 }
 
@@ -59,12 +52,11 @@ ydl_opts_tiktok = {
     'format': 'best[height<=720]',
     'quiet': True,
     'no_warnings': True,
-    'noplaylist': True,
     'outtmpl': 'temp/%(id)s.%(ext)s',
     'socket_timeout': 30,
     'retries': 3,
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     },
 }
 
@@ -146,6 +138,30 @@ def is_tiktok_url(url):
             return True
     return False
 
+def extract_instagram_video_simple(url):
+    """SIZNING DASTLABKI ISHLAYDIGAN INSTAGRAM YUKLOVCHINGIZ"""
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts_instagram) as ydl:
+            info = ydl.extract_info(url, download=True)
+            video_id = info.get('id', 'instagram_video')
+            title = info.get('title', 'Instagram Video')
+            
+            for file in os.listdir("temp"):
+                if file.startswith(video_id) or video_id in file:
+                    return os.path.join("temp", file), title
+            
+            for file in os.listdir("temp"):
+                if file.endswith(('.mp4', '.webm', '.mkv')):
+                    file_path = os.path.join("temp", file)
+                    if os.path.getctime(file_path) > os.path.getctime("temp") + 5:
+                        return file_path, title
+                        
+        return None, title
+        
+    except Exception as e:
+        print(f"Instagram xatosi: {e}")
+        return None, "Instagram Video"
+
 # ================= SHAZAM ANIQLASH =================
 async def recognize_song(audio_bytes):
     try:
@@ -168,6 +184,43 @@ async def recognize_song(audio_bytes):
     except Exception as e:  
         print(f"Shazam xatosi: {e}")  
     return {'found': False}
+
+# ================= /START — TUGMALI MENYU =================
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton("📱 Instagram Reel yuklash", callback_data="menu_instagram")
+    btn2 = types.InlineKeyboardButton("📱 TikTok video yuklash", callback_data="menu_tiktok")
+    btn3 = types.InlineKeyboardButton("🔍 Qo'shiq qidirish", callback_data="menu_search")
+    btn4 = types.InlineKeyboardButton("🎵 Audio orqali aniqlash", callback_data="menu_audio")
+    markup.add(btn1, btn2, btn3, btn4)
+    
+    text = (
+        "👋 Salom! Men musiqa topuvchi botman 🎵\n\n"
+        "Quyidagi tugmalardan foydalaning yoki bevosita yuboring:\n"
+        "• Instagram linki\n"
+        "• TikTok linki\n"
+        "• Qo'shiq nomi\n"
+        "• Audio fayl\n\n"
+        "👤 Telegram: @Rustamov_v1\n"
+        "📸 Instagram: https://www.instagram.com/bahrombekh_fx"
+    )
+    bot.send_message(message.chat.id, text, reply_markup=markup)
+
+# ================= TUGMALI MENYU UCHUN CALLBACKLAR =================
+@bot.callback_query_handler(func=lambda call: call.data.startswith("menu_"))
+def handle_menu(call):
+    bot.answer_callback_query(call.id)
+    chat_id = call.message.chat.id
+    
+    if call.data == "menu_instagram":
+        bot.send_message(chat_id, "📲 Instagram Reel linkini yuboring.\n\nMisol: `https://www.instagram.com/reel/Cxyz/`", parse_mode="Markdown")
+    elif call.data == "menu_tiktok":
+        bot.send_message(chat_id, "📲 TikTok video linkini yuboring.\n\nMisol: `https://www.tiktok.com/@user/video/123`", parse_mode="Markdown")
+    elif call.data == "menu_search":
+        bot.send_message(chat_id, "🔍 Qidirish uchun qo'shiq nomi yoki ijrochini yozing.\n\nMisol: `Yulduz Usmonova` yoki `Sevgi nuri`")
+    elif call.data == "menu_audio":
+        bot.send_message(chat_id, "🎵 Musiqani aniqlash uchun audio yoki voice yuboring.")
 
 # ================= AUDIO FAYL YUBORILGANDA =================
 @bot.message_handler(content_types=['audio', 'voice'])
@@ -257,68 +310,37 @@ def handle_audio(message):
     except Exception as e:  
         bot.reply_to(message, f"❌ Xatolik yuz berdi")
 
-# ================= INSTAGRAM HANDLER (ISHLAYDIGAN) =================
+# ================= INSTAGRAM HANDLER (SIZNING DASTLABKI ISHLAYDIGAN VARIANTINGIZ) =================
 @bot.message_handler(func=lambda m: is_instagram_url(m.text))
 def handle_instagram_reel(message):
     try:
         url = message.text.strip()
         msg = bot.reply_to(message, "⏳")
 
-        # ISHLAYDIGAN INSTAGRAM — faqat shu qism o'zgardi
-        opts = {
-            'format': 'best[height<=720]',
-            'quiet': True,
-            'no_warnings': True,
-            'noplaylist': True,
-            'outtmpl': 'temp/%(id)s.%(ext)s',
-            'socket_timeout': 60,
-            'retries': 5,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-            },
-        }
-
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if not info:
-                raise Exception("Ma'lumot yuklanmadi")
-
-            # Faylni topish — oxirgi yuklangan katta fayl
-            video_files = []
-            for f in os.listdir("temp"):
-                if f.endswith(('.mp4', '.webm')):
-                    full_path = os.path.join("temp", f)
-                    if os.path.getsize(full_path) > 50000:  # >50KB
-                        video_files.append((full_path, os.path.getctime(full_path)))
-            
-            if not video_files:
-                raise Exception("Fayl topilmadi")
-
-            # Eng oxirgi yuklangan fayl
-            video_path = max(video_files, key=lambda x: x[1])[0]
-            title = info.get('title', 'Instagram Reel')[:60]
-
+        video_path, video_title = extract_instagram_video_simple(url)
+        
+        if video_path and os.path.exists(video_path):
             btn_hash = create_hash(video_path)
             markup = types.InlineKeyboardMarkup()  
             markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"insta_{btn_hash}"))  
 
             with open(video_path, 'rb') as f:  
-                bot.send_video(message.chat.id, f, reply_markup=markup, caption="✅ Video yuklandi!")  
+                bot.send_video(message.chat.id, f, reply_markup=markup, caption="✅ Instagram video yuklandi!")  
 
             with open(f"temp/{btn_hash}.txt", "w") as f:  
                 f.write(video_path)  
 
             bot.delete_message(message.chat.id, msg.message_id)
+        else:
+            bot.edit_message_text(
+                "❌ Instagram video yuklanmadi\n"
+                "Iltimos video ommaviy bo'lishi kerak",
+                message.chat.id,
+                msg.message_id
+            )
 
-    except Exception as e:
-        bot.edit_message_text(
-            "❌ Instagram video yuklanmadi\n"
-            "✅ Video ommaviy bo'lishi kerak\n"
-            "✅ Linkda 'reel', 'p', yoki 'tv' bo'lishi kerak",
-            message.chat.id,
-            msg.message_id
-        )
-        print(f"Instagram xatosi: {e}")
+    except Exception as e:  
+        bot.reply_to(message, f"❌ Instagram video yuklanmadi")
 
 # ================= TIKTOK HANDLER =================
 @bot.message_handler(func=lambda m: is_tiktok_url(m.text))
@@ -372,22 +394,15 @@ def handle_media_music(call):
         short_audio_path = video_path.rsplit('.', 1)[0] + '_short.mp3'
         
         try:
-            # Audio ajratish uchun oddiy usul
             subprocess.run([
                 'ffmpeg', '-i', video_path, 
                 '-t', '10', 
                 '-vn', 
                 '-acodec', 'mp3', 
                 '-y', short_audio_path
-            ], capture_output=True, timeout=30)
+            ], capture_output=True, timeout=30, check=False)
         except:
-            # Agar ffmpeg bo'lmasa — faylni o'chirib, xabar berish
-            if os.path.exists(video_path):
-                os.remove(video_path)
-            if os.path.exists(f"temp/{btn_hash}.txt"):
-                os.remove(f"temp/{btn_hash}.txt")
-            bot.send_message(call.message.chat.id, "⚠️ Serverda audio qayta ishlash imkoni yo'q. Faqat qo'shiq nomi orqali qidiring.")
-            return
+            pass
 
         if not os.path.exists(short_audio_path):
             bot.send_message(call.message.chat.id, "❌ Audio ajratishda xatolik")
@@ -475,7 +490,7 @@ def search_music(message):
     msg = bot.reply_to(message, f"🔍 '{query}' qidirilmoqda...")  
     
     try:  
-        # 10 TA NATIJA — faqat musiqalar (audio qo'shildi)
+        # 10 TA NATIJA — qidiruvda "audio" qo'shildi
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
@@ -575,7 +590,7 @@ def download_audio(call):
     with open(f"temp/{h}.txt") as f:  
         data = f.read().strip()  
     
-    if "|" in data:  
+    if "|" in   
         url, title = data.split("|", 1)  
     else:  
         url = data  
@@ -656,16 +671,24 @@ def handle_navigation(call):
     
     elif call.data == "nav_home":
         # Bosh sahifa - /start
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        btn1 = types.InlineKeyboardButton("📱 Instagram Reel yuklash", callback_data="menu_instagram")
+        btn2 = types.InlineKeyboardButton("📱 TikTok video yuklash", callback_data="menu_tiktok")
+        btn3 = types.InlineKeyboardButton("🔍 Qo'shiq qidirish", callback_data="menu_search")
+        btn4 = types.InlineKeyboardButton("🎵 Audio orqali aniqlash", callback_data="menu_audio")
+        markup.add(btn1, btn2, btn3, btn4)
+        
         text = (
             "👋 Salom! Men musiqa topuvchi botman 🎵\n\n"
-            "Menga quyidagilarni yuborishingiz mumkin:\n"
-            "1. 📱 Instagram Reel linki\n"
-            "2. 📱 TikTok video linki\n"
-            "3. 🎤 Qo'shiq nomi yoki ijrochi ismi\n"
-            "4. 🎵 Audio fayl (musiqani aniqlash uchun)\n\n"
-            "Yana qo'shiq nomi yoki ijrochi ismini yuboring!"
+            "Quyidagi tugmalardan foydalaning yoki bevosita yuboring:\n"
+            "• Instagram linki\n"
+            "• TikTok linki\n"
+            "• Qo'shiq nomi\n"
+            "• Audio fayl\n\n"
+            "👤 Telegram: @Rustamov_v1\n"
+            "📸 Instagram: https://www.instagram.com/bahrombekh_fx"
         )
-        bot.send_message(user_id, text)
+        bot.send_message(user_id, text, reply_markup=markup)
     
     elif call.data == "nav_next":
         # Oldinga - yangi 10 ta natija
@@ -850,8 +873,8 @@ def handle_prev_to_11_20(call):
 
 # ================= BOT ISHGA TUSHDI =================
 print("✅ BOT ISHGA TUSHDI!")
-print("📲 Instagram & TikTok qo'llab-quvvatlanadi")
-print("🎵 Qidiruvda faqat musiqalar chiqadi")
+print("📲 /start — tugmali menyu")
+print("📱 Instagram & TikTok — ishlaydi")
 bot.infinity_polling(
     skip_pending=True,
     none_stop=True,
