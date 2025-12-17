@@ -442,7 +442,6 @@ def handle_audio_message(message: types.Message) -> None:
         safe_delete(audio_file_path)
 
 # ==================== INSTAGRAM HANDLER ====================
-# ==================== INSTAGRAM HANDLER ====================
 @bot.message_handler(func=lambda m: m.text and is_instagram_url(m.text))
 def handle_instagram(message: types.Message) -> None:
     """Instagram video yuklash"""
@@ -455,53 +454,74 @@ def handle_instagram(message: types.Message) -> None:
         
         logger.info(f"Instagram URL: {url}")
         
-        # Instaloader API (yangi usul)
-        import requests
-        
-        api_url = "https://api.instavideosave.com/"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        # yt-dlp bilan yuklash (yaxshilangan sozlamalar)
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'format': 'best',
+            'outtmpl': str(TEMP_DIR / 'ig_%(id)s.%(ext)s'),
+            'socket_timeout': 30,
+            'retries': 5,
+            'fragment_retries': 5,
+            'nocheckcertificate': True,
+            'geo_bypass': True,
+            'prefer_insecure': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Origin': 'https://www.instagram.com',
+                'Referer': 'https://www.instagram.com/',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+            },
+            'cookiefile': None,
+            'extract_flat': False,
         }
         
-        # API'ga so'rov yuborish
-        response = requests.post(
-            api_url,
-            data={'url': url},
-            headers=headers,
-            timeout=30
-        )
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            video_id = info.get('id', 'video')
         
-        if response.status_code != 200:
-            raise Exception("API xatosi")
+        # Video topish
+        video_files = list(TEMP_DIR.glob(f"ig_{video_id}*"))
+        if not video_files:
+            video_files = sorted(
+                list(TEMP_DIR.glob('ig_*.mp4')) + list(TEMP_DIR.glob('ig_*.webm')),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True
+            )
         
-        data = response.json()
-        
-        if not data.get('success') or not data.get('url'):
+        if not video_files:
             bot.edit_message_text(
-                "❌ Instagram video yuklanmadi\n\n"
+                "❌ Video yuklanmadi\n\n"
                 "Sabablar:\n"
                 "• Link noto'g'ri\n"
                 "• Video private\n"
-                "• API xatosi",
+                "• Instagram blok qilgan",
                 message.chat.id,
                 status_msg.message_id
             )
             return
         
-        download_url = data['url'][0]['url'] if isinstance(data['url'], list) else data['url']
+        video_path = video_files[0]
         
-        # Video yuklab olish
-        video_response = requests.get(download_url, stream=True, timeout=60, headers=headers)
-        video_response.raise_for_status()
-        
-        # Vaqtinchalik fayl yaratish
-        video_hash = create_hash(url)
-        video_path = TEMP_DIR / f"ig_{video_hash}.mp4"
-        
-        with open(video_path, 'wb') as f:
-            for chunk in video_response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
+        # Agar .webm bo'lsa, .mp4 ga o'zgartirish
+        if video_path.suffix == '.webm':
+            mp4_path = video_path.with_suffix('.mp4')
+            try:
+                subprocess.run(
+                    ['ffmpeg', '-i', str(video_path), '-c', 'copy', str(mp4_path), '-y'],
+                    capture_output=True,
+                    timeout=60,
+                    check=True
+                )
+                safe_delete(video_path)
+                video_path = mp4_path
+            except:
+                pass  # Agar ffmpeg ishlamasa, webm yuboramiz
         
         # Hajmni tekshirish
         file_size = video_path.stat().st_size
@@ -542,14 +562,19 @@ def handle_instagram(message: types.Message) -> None:
         bot.delete_message(message.chat.id, status_msg.message_id)
         logger.info("✅ Instagram video yuborildi")
     
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Instagram API xatosi: {e}")
+    except yt_dlp.utils.DownloadError as e:
+        error_msg = str(e)
+        logger.error(f"yt-dlp xatosi: {error_msg}")
+        
         if status_msg:
-            bot.edit_message_text(
-                "❌ Instagram yuklanmadi\n\nQayta urinib ko'ring",
-                message.chat.id,
-                status_msg.message_id
-            )
+            if "Private" in error_msg or "login" in error_msg.lower():
+                msg = "❌ Bu video private (shaxsiy)"
+            elif "unavailable" in error_msg.lower():
+                msg = "❌ Video mavjud emas"
+            else:
+                msg = "❌ Instagram video yuklanmadi\n\nQayta urinib ko'ring"
+            
+            bot.edit_message_text(msg, message.chat.id, status_msg.message_id)
     
     except Exception as e:
         logger.error(f"Instagram xatosi: {e}")
@@ -607,43 +632,7 @@ def handle_tiktok(message: types.Message) -> None:
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton(
-                "🎵 Musiqani aniqlash",
-                callback_data=f"music_{btn_hash}"
-            )
-        )
-        
-        # Video yuborish
-        with open(video_path, 'rb') as video_file:
-            bot.send_video(
-                message.chat.id,
-                video_file,
-                reply_markup=markup,
-                caption="📱 TikTok",
-                supports_streaming=True,
-                timeout=120
-            )
-        
-        (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
-        bot.delete_message(message.chat.id, status_msg.message_id)
-        logger.info("✅ TikTok video yuborildi")
-    
-    except Exception as e:
-        logger.error(f"TikTok xatosi: {e}")
-        if status_msg:
-            bot.edit_message_text(
-                "❌ TikTok yuklanmadi",
-                message.chat.id,
-                status_msg.message_id
-            )
-    
-    finally:
-        if video_path:
-            def delayed_delete():
-                time.sleep(60)
-                safe_delete(video_path)
-            
-            import threading
-            threading.Thread(target=delayed_delete, daemon=True).start()
+threading.Thread(target=delayed_delete, daemon=True).start()
 
 # ==================== VIDEO MUSIC RECOGNITION ====================
 @bot.callback_query_handler(func=lambda c: c.data.startswith('music_'))
