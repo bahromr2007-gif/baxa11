@@ -442,6 +442,7 @@ def handle_audio_message(message: types.Message) -> None:
         safe_delete(audio_file_path)
 
 # ==================== INSTAGRAM HANDLER ====================
+# ==================== INSTAGRAM HANDLER ====================
 @bot.message_handler(func=lambda m: m.text and is_instagram_url(m.text))
 def handle_instagram(message: types.Message) -> None:
     """Instagram video yuklash"""
@@ -454,23 +455,34 @@ def handle_instagram(message: types.Message) -> None:
         
         logger.info(f"Instagram URL: {url}")
         
-        # yt-dlp bilan yuklash
-        with yt_dlp.YoutubeDL(INSTAGRAM_OPTIONS) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_id = info.get('id', 'video')
+        # Tashagan koddagi usul - Snapinsta API
+        import requests
+        from bs4 import BeautifulSoup
+        import random
         
-        # Video topish
-        video_files = list(TEMP_DIR.glob(f"ig_{video_id}*"))
-        if not video_files:
-            video_files = sorted(
-                TEMP_DIR.glob('ig_*.mp4'),
-                key=lambda f: f.stat().st_mtime,
-                reverse=True
-            )
+        def random_ip():
+            ips = ['46.227.123.', '37.110.212.', '46.255.69.', '62.209.128.', '37.110.214.', '31.135.209.', '37.110.213.']
+            prefix = random.choice(ips)
+            return prefix + str(random.randint(1, 255))
         
-        if not video_files:
+        data = {'q': url, 'vt': 'home'}
+        headers = {
+            'origin': 'https://snapinsta.io',
+            'referer': 'https://snapinsta.io/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36',
+            'X-Forwarded-For': random_ip(),
+            'X-Client-IP': random_ip(),
+            'X-Real-IP': random_ip(),
+            'X-Forwarded-Host': 'snapinsta.io'
+        }
+        base_url = 'https://snapinsta.io/api/ajaxSearch'
+        
+        response = requests.post(base_url, data=data, headers=headers, timeout=30)
+        jsonn = response.json()
+        
+        if jsonn['status'] != 'ok':
             bot.edit_message_text(
-                "❌ Video yuklanmadi\n\n"
+                "❌ Instagram video yuklanmadi\n\n"
                 "Sabablar:\n"
                 "• Link noto'g'ri\n"
                 "• Video private\n"
@@ -480,7 +492,35 @@ def handle_instagram(message: types.Message) -> None:
             )
             return
         
-        video_path = video_files[0]
+        # HTML parse qilish
+        data_html = jsonn['data']
+        soup = BeautifulSoup(data_html, 'html.parser')
+        
+        # Download link topish
+        download_items = soup.find_all('div', class_='download-items__btn')
+        if not download_items:
+            bot.edit_message_text(
+                "❌ Yuklab olish linki topilmadi",
+                message.chat.id,
+                status_msg.message_id
+            )
+            return
+        
+        # Birinchi linkni olish
+        download_url = download_items[0].find('a')['href']
+        
+        # Video yuklab olish
+        video_response = requests.get(download_url, stream=True, timeout=60)
+        video_response.raise_for_status()
+        
+        # Vaqtinchalik fayl yaratish
+        video_hash = create_hash(url)
+        video_path = TEMP_DIR / f"ig_{video_hash}.mp4"
+        
+        with open(video_path, 'wb') as f:
+            for chunk in video_response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
         
         # Hajmni tekshirish
         file_size = video_path.stat().st_size
@@ -519,21 +559,16 @@ def handle_instagram(message: types.Message) -> None:
         (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
         
         bot.delete_message(message.chat.id, status_msg.message_id)
-        logger.info("✅ Instagram video yuborildi")
+        logger.info("✅ Instagram video yuborildi (Snapinsta)")
     
-    except yt_dlp.utils.DownloadError as e:
-        error_msg = str(e)
-        logger.error(f"yt-dlp xatosi: {error_msg}")
-        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Snapinsta API xatosi: {e}")
         if status_msg:
-            if "Private" in error_msg or "login" in error_msg.lower():
-                msg = "❌ Bu video private (shaxsiy)"
-            elif "unavailable" in error_msg.lower():
-                msg = "❌ Video mavjud emas"
-            else:
-                msg = "❌ Instagram video yuklanmadi"
-            
-            bot.edit_message_text(msg, message.chat.id, status_msg.message_id)
+            bot.edit_message_text(
+                "❌ Instagram video yuklanmadi\n\nQayta urinib ko'ring",
+                message.chat.id,
+                status_msg.message_id
+            )
     
     except Exception as e:
         logger.error(f"Instagram xatosi: {e}")
