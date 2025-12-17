@@ -455,62 +455,43 @@ def handle_instagram(message: types.Message) -> None:
         
         logger.info(f"Instagram URL: {url}")
         
-        # Tashagan koddagi usul - Snapinsta API
+        # Instaloader API (yangi usul)
         import requests
-        from bs4 import BeautifulSoup
-        import random
         
-        def random_ip():
-            ips = ['46.227.123.', '37.110.212.', '46.255.69.', '62.209.128.', '37.110.214.', '31.135.209.', '37.110.213.']
-            prefix = random.choice(ips)
-            return prefix + str(random.randint(1, 255))
-        
-        data = {'q': url, 'vt': 'home'}
+        api_url = "https://api.instavideosave.com/"
         headers = {
-            'origin': 'https://snapinsta.io',
-            'referer': 'https://snapinsta.io/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36',
-            'X-Forwarded-For': random_ip(),
-            'X-Client-IP': random_ip(),
-            'X-Real-IP': random_ip(),
-            'X-Forwarded-Host': 'snapinsta.io'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        base_url = 'https://snapinsta.io/api/ajaxSearch'
         
-        response = requests.post(base_url, data=data, headers=headers, timeout=30)
-        jsonn = response.json()
+        # API'ga so'rov yuborish
+        response = requests.post(
+            api_url,
+            data={'url': url},
+            headers=headers,
+            timeout=30
+        )
         
-        if jsonn['status'] != 'ok':
+        if response.status_code != 200:
+            raise Exception("API xatosi")
+        
+        data = response.json()
+        
+        if not data.get('success') or not data.get('url'):
             bot.edit_message_text(
                 "❌ Instagram video yuklanmadi\n\n"
                 "Sabablar:\n"
                 "• Link noto'g'ri\n"
                 "• Video private\n"
-                "• Instagram blok qilgan",
+                "• API xatosi",
                 message.chat.id,
                 status_msg.message_id
             )
             return
         
-        # HTML parse qilish
-        data_html = jsonn['data']
-        soup = BeautifulSoup(data_html, 'html.parser')
-        
-        # Download link topish
-        download_items = soup.find_all('div', class_='download-items__btn')
-        if not download_items:
-            bot.edit_message_text(
-                "❌ Yuklab olish linki topilmadi",
-                message.chat.id,
-                status_msg.message_id
-            )
-            return
-        
-        # Birinchi linkni olish
-        download_url = download_items[0].find('a')['href']
+        download_url = data['url'][0]['url'] if isinstance(data['url'], list) else data['url']
         
         # Video yuklab olish
-        video_response = requests.get(download_url, stream=True, timeout=60)
+        video_response = requests.get(download_url, stream=True, timeout=60, headers=headers)
         video_response.raise_for_status()
         
         # Vaqtinchalik fayl yaratish
@@ -559,13 +540,13 @@ def handle_instagram(message: types.Message) -> None:
         (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
         
         bot.delete_message(message.chat.id, status_msg.message_id)
-        logger.info("✅ Instagram video yuborildi (Snapinsta)")
+        logger.info("✅ Instagram video yuborildi")
     
     except requests.exceptions.RequestException as e:
-        logger.error(f"Snapinsta API xatosi: {e}")
+        logger.error(f"Instagram API xatosi: {e}")
         if status_msg:
             bot.edit_message_text(
-                "❌ Instagram video yuklanmadi\n\nQayta urinib ko'ring",
+                "❌ Instagram yuklanmadi\n\nQayta urinib ko'ring",
                 message.chat.id,
                 status_msg.message_id
             )
@@ -588,7 +569,6 @@ def handle_instagram(message: types.Message) -> None:
             
             import threading
             threading.Thread(target=delayed_delete, daemon=True).start()
-
 # ==================== TIKTOK HANDLER ====================
 @bot.message_handler(func=lambda m: m.text and is_tiktok_url(m.text))
 def handle_tiktok(message: types.Message) -> None:
