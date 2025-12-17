@@ -19,7 +19,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 # ========================================
 # BOT TOKEN
-BOT_TOKEN = "8575775719:AAFjR9wnpNEDI-3pzWOeQ1NnyaOnrfgpOk4"
+BOT_TOKEN = "8575775719:AAFk71ow9WR7crlONGpnP56qAZjO88Hj4eI"
 
 # Webhook va oldingi instancelarni o'chirish
 try:
@@ -74,11 +74,22 @@ ydl_opts_base = {
 
 ydl_opts_instagram = {
     **ydl_opts_base,
-    'format': 'best[height<=720]',
+    'format': 'best',
     'outtmpl': str(TEMP_DIR / '%(id)s.%(ext)s'),
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
     },
+    'cookiefile': None,
+    'nocheckcertificate': True,
+    'no_check_certificate': True,
 }
 
 ydl_opts_tiktok = {
@@ -239,30 +250,121 @@ def handle_instagram(message):
     msg = None
     video_path = None
     try:
+        url = message.text.strip()
         msg = bot.reply_to(message, "⏳ Instagram yuklanmoqda...")
         
+        # URL tozalash
+        url = url.split('?')[0]  # Query parametrlarni olib tashlash
+        
+        print(f"Instagram URL: {url}")
+        
+        # yt-dlp bilan yuklash
         with yt_dlp.YoutubeDL(ydl_opts_instagram) as ydl:
-            info = ydl.extract_info(message.text.strip(), download=True)
-            video_id = info.get('id', 'video')
-        
-        video_path = max(TEMP_DIR.glob(f"{video_id}*"), key=os.path.getctime)
-        
-        btn_hash = create_hash(str(video_path))
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"vid_{btn_hash}"))
-        
-        with open(video_path, 'rb') as f:
-            bot.send_video(message.chat.id, f, reply_markup=markup)
-        
-        (TEMP_DIR / f"{btn_hash}.txt").write_text(str(video_path))
-        bot.delete_message(message.chat.id, msg.message_id)
+            try:
+                info = ydl.extract_info(url, download=True)
+                video_id = info.get('id', 'instagram')
+                print(f"Video ID: {video_id}")
+                
+                # Yuklanagan faylni topish
+                video_files = list(TEMP_DIR.glob(f"*{video_id}*"))
+                if not video_files:
+                    video_files = list(TEMP_DIR.glob("*.mp4")) + list(TEMP_DIR.glob("*.webm"))
+                
+                if video_files:
+                    # Eng yangi faylni tanlash
+                    video_path = max(video_files, key=os.path.getctime)
+                    print(f"Video fayl: {video_path}")
+                    
+                    # Fayl hajmini tekshirish
+                    file_size = video_path.stat().st_size
+                    print(f"Fayl hajmi: {file_size / (1024*1024):.2f} MB")
+                    
+                    # Telegram limit: 50 MB
+                    if file_size > 50 * 1024 * 1024:
+                        bot.edit_message_text(
+                            "❌ Video juda katta (>50MB)\n"
+                            "Telegram limiti: 50MB",
+                            message.chat.id,
+                            msg.message_id
+                        )
+                        safe_remove(video_path)
+                        return
+                    
+                    btn_hash = create_hash(str(video_path))
+                    markup = types.InlineKeyboardMarkup()
+                    markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"vid_{btn_hash}"))
+                    
+                    # Video yuborish
+                    with open(video_path, 'rb') as f:
+                        bot.send_video(
+                            message.chat.id, 
+                            f, 
+                            reply_markup=markup,
+                            caption="📱 Instagram",
+                            supports_streaming=True,
+                            timeout=120
+                        )
+                    
+                    (TEMP_DIR / f"{btn_hash}.txt").write_text(str(video_path))
+                    bot.delete_message(message.chat.id, msg.message_id)
+                    print("✅ Video yuborildi")
+                else:
+                    bot.edit_message_text(
+                        "❌ Video yuklanmadi\n\n"
+                        "Sabablari:\n"
+                        "• Video private (shaxsiy)\n"
+                        "• Link noto'g'ri\n"
+                        "• Instagram blok qilgan",
+                        message.chat.id,
+                        msg.message_id
+                    )
+                    
+            except yt_dlp.utils.DownloadError as e:
+                error_msg = str(e)
+                print(f"yt-dlp xatosi: {error_msg}")
+                
+                if "Private" in error_msg or "login" in error_msg.lower():
+                    bot.edit_message_text(
+                        "❌ Bu video private (shaxsiy)\n"
+                        "Faqat ommaviy videolarni yuklay olaman",
+                        message.chat.id,
+                        msg.message_id
+                    )
+                elif "unavailable" in error_msg.lower():
+                    bot.edit_message_text(
+                        "❌ Video mavjud emas yoki o'chirilgan",
+                        message.chat.id,
+                        msg.message_id
+                    )
+                else:
+                    bot.edit_message_text(
+                        "❌ Instagram video yuklanmadi\n\n"
+                        "Yana bir bor urinib ko'ring yoki\n"
+                        "boshqa link yuboring",
+                        message.chat.id,
+                        msg.message_id
+                    )
         
     except Exception as e:
         print(f"Instagram xatosi: {e}")
         if msg:
-            bot.edit_message_text("❌ Video yuklanmadi", message.chat.id, msg.message_id)
+            bot.edit_message_text(
+                "❌ Video yuklanmadi\n\n"
+                "Link to'g'riligini tekshiring:\n"
+                "• /reel/ yoki /p/ bo'lishi kerak\n"
+                "• Video public bo'lishi kerak",
+                message.chat.id,
+                msg.message_id
+            )
     finally:
-        safe_remove(video_path)
+        # Video yuborilgandan keyin o'chirish
+        if video_path and video_path.exists():
+            try:
+                # 30 soniya kutish (Telegram yuklashi uchun)
+                time.sleep(30)
+                safe_remove(video_path)
+            except:
+                pass
 
 # ================= TIKTOK =================
 @bot.message_handler(func=lambda m: is_tiktok_url(m.text))
