@@ -595,6 +595,7 @@ def handle_instagram(message: types.Message) -> None:
             import threading
             threading.Thread(target=delayed_delete, daemon=True).start()
 # ==================== TIKTOK HANDLER ====================
+# ==================== TIKTOK HANDLER ====================
 @bot.message_handler(func=lambda m: m.text and is_tiktok_url(m.text))
 def handle_tiktok(message: types.Message) -> None:
     """TikTok video yuklash"""
@@ -607,19 +608,48 @@ def handle_tiktok(message: types.Message) -> None:
         
         logger.info(f"TikTok URL: {url}")
         
-        with yt_dlp.YoutubeDL(TIKTOK_OPTIONS) as ydl:
+        # yt-dlp bilan yuklash (yaxshilangan sozlamalar)
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'format': 'best',
+            'outtmpl': str(TEMP_DIR / 'tt_%(id)s.%(ext)s'),
+            'socket_timeout': 30,
+            'retries': 5,
+            'fragment_retries': 5,
+            'nocheckcertificate': True,
+            'geo_bypass': True,
+            'prefer_insecure': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Referer': 'https://www.tiktok.com/',
+            },
+            'extract_flat': False,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
+            video_id = info.get('id', 'video')
         
         # Video topish
-        video_files = sorted(
-            list(TEMP_DIR.glob('tt_*.mp4')) + list(TEMP_DIR.glob('tt_*.webm')),
-            key=lambda f: f.stat().st_mtime,
-            reverse=True
-        )
+        video_files = list(TEMP_DIR.glob(f"tt_{video_id}*"))
+        if not video_files:
+            video_files = sorted(
+                list(TEMP_DIR.glob('tt_*.mp4')) + list(TEMP_DIR.glob('tt_*.webm')),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True
+            )
         
         if not video_files:
             bot.edit_message_text(
-                "❌ TikTok video yuklanmadi",
+                "❌ TikTok video yuklanmadi\n\n"
+                "Sabablar:\n"
+                "• Link noto'g'ri\n"
+                "• Video private\n"
+                "• TikTok blok qilgan",
                 message.chat.id,
                 status_msg.message_id
             )
@@ -627,12 +657,92 @@ def handle_tiktok(message: types.Message) -> None:
         
         video_path = video_files[0]
         
+        # Agar .webm bo'lsa, .mp4 ga o'zgartirish
+        if video_path.suffix == '.webm':
+            mp4_path = video_path.with_suffix('.mp4')
+            try:
+                subprocess.run(
+                    ['ffmpeg', '-i', str(video_path), '-c', 'copy', str(mp4_path), '-y'],
+                    capture_output=True,
+                    timeout=60,
+                    check=True
+                )
+                safe_delete(video_path)
+                video_path = mp4_path
+            except:
+                pass  # Agar ffmpeg ishlamasa, webm yuboramiz
+        
+        # Hajmni tekshirish
+        file_size = video_path.stat().st_size
+        if file_size > MAX_FILE_SIZE:
+            size_mb = file_size / (1024 * 1024)
+            bot.edit_message_text(
+                f"❌ Video juda katta ({size_mb:.1f} MB)\n"
+                f"Telegram limit: 50 MB",
+                message.chat.id,
+                status_msg.message_id
+            )
+            return
+        
         # Inline tugma
         btn_hash = create_hash(str(video_path))
         markup = types.InlineKeyboardMarkup()
         markup.add(
-            types.InlineKeyboardButton()
-threading.Thread(target=delayed_delete, daemon=True).start()
+            types.InlineKeyboardButton(
+                "🎵 Musiqani aniqlash",
+                callback_data=f"music_{btn_hash}"
+            )
+        )
+        
+        # Video yuborish
+        with open(video_path, 'rb') as video_file:
+            bot.send_video(
+                message.chat.id,
+                video_file,
+                reply_markup=markup,
+                caption="📱 TikTok",
+                supports_streaming=True,
+                timeout=120
+            )
+        
+        # Session saqlash
+        (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
+        
+        bot.delete_message(message.chat.id, status_msg.message_id)
+        logger.info("✅ TikTok video yuborildi")
+    
+    except yt_dlp.utils.DownloadError as e:
+        error_msg = str(e)
+        logger.error(f"yt-dlp xatosi: {error_msg}")
+        
+        if status_msg:
+            if "Private" in error_msg or "login" in error_msg.lower():
+                msg = "❌ Bu video private (shaxsiy)"
+            elif "unavailable" in error_msg.lower():
+                msg = "❌ Video mavjud emas"
+            else:
+                msg = "❌ TikTok video yuklanmadi\n\nQayta urinib ko'ring"
+            
+            bot.edit_message_text(msg, message.chat.id, status_msg.message_id)
+    
+    except Exception as e:
+        logger.error(f"TikTok xatosi: {e}")
+        if status_msg:
+            bot.edit_message_text(
+                "❌ TikTok yuklanmadi",
+                message.chat.id,
+                status_msg.message_id
+            )
+    
+    finally:
+        # Kechiktirilgan o'chirish
+        if video_path:
+            def delayed_delete():
+                time.sleep(60)
+                safe_delete(video_path)
+            
+            import threading
+            threading.Thread(target=delayed_delete, daemon=True).start()
 
 # ==================== VIDEO MUSIC RECOGNITION ====================
 @bot.callback_query_handler(func=lambda c: c.data.startswith('music_'))
