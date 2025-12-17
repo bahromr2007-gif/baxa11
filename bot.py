@@ -9,18 +9,28 @@ import hashlib
 import re
 import json
 import time
+import signal
 from telebot import types
 from shazamio import Shazam
 import yt_dlp
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
-telebot.apihelper.delete_webhook = True
 
 # ========================================
 # BOT TOKEN
 BOT_TOKEN = "8575775719:AAFjR9wnpNEDI-3pzWOeQ1NnyaOnrfgpOk4"
-bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
+
+# Webhook va oldingi instancelarni o'chirish
+try:
+    temp_bot = telebot.TeleBot(BOT_TOKEN)
+    temp_bot.remove_webhook()
+    print("✅ Webhook o'chirildi")
+except Exception as e:
+    print(f"⚠️ Webhook xatosi: {e}")
+
+# Bot yaratish
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False, skip_pending=True)
 # ========================================
 
 # TEMP papka yaratish
@@ -494,9 +504,39 @@ def handle_nav(call):
         else:
             bot.send_message(user_id, "❌ Ko'proq natija yo'q")
 
-# ================= ISHGA TUSHIRISH =================
-print("✅ BOT ISHGA TUSHDI!")
-print("🚀 Optimallashtirilgan versiya")
-print("⚡ Railway uchun tayyor")
+# ================= GRACEFUL SHUTDOWN =================
+def signal_handler(sig, frame):
+    print("\n🛑 Bot to'xtatilmoqda...")
+    bot.stop_polling()
+    cleanup_old_files()
+    print("✅ Bot to'xtatildi")
+    sys.exit(0)
 
-bot.infinity_polling(skip_pending=True, none_stop=True, interval=0)
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# ================= ISHGA TUSHIRISH =================
+if __name__ == "__main__":
+    print("✅ BOT ISHGA TUSHDI!")
+    print("🚀 Optimallashtirilgan versiya")
+    print("⚡ Railway uchun tayyor")
+    print("🔄 Webhook o'chirildi, polling boshlandi")
+    
+    # Eski fayllarni tozalash
+    cleanup_old_files()
+    
+    try:
+        bot.infinity_polling(
+            skip_pending=True,
+            none_stop=True,
+            interval=1,
+            timeout=30,
+            long_polling_timeout=30
+        )
+    except KeyboardInterrupt:
+        print("\n🛑 Bot to'xtatildi")
+    except Exception as e:
+        print(f"❌ Xatolik: {e}")
+        time.sleep(5)
+        print("🔄 Qayta urinilmoqda...")
+        bot.infinity_polling(skip_pending=True, none_stop=True)
