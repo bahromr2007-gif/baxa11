@@ -631,7 +631,7 @@ def handle_tiktok(message: types.Message) -> None:
         btn_hash = create_hash(str(video_path))
         markup = types.InlineKeyboardMarkup()
         markup.add(
-            types.InlineKeyboardButton(
+            types.InlineKeyboardButton()
 threading.Thread(target=delayed_delete, daemon=True).start()
 
 # ==================== VIDEO MUSIC RECOGNITION ====================
