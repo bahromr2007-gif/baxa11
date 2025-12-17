@@ -6,6 +6,8 @@ instaloader
 pydub
 requests
 shazamio
+beautifulsoup4
+lxml
 
 
 
