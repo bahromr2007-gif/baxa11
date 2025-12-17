@@ -15,6 +15,7 @@ import re
 import time
 import signal
 import logging
+from importlib.metadata import version
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -921,7 +922,7 @@ def main() -> None:
     logger.info("🎵 TELEGRAM MUSIC BOT")
     logger.info("=" * 60)
     logger.info(f"🐍 Python: {sys.version.split()[0]}")
-    logger.info(f"📦 pyTelegramBotAPI: {telebot.__version__}")
+    logger.info(f"📦 pyTelegramBotAPI: {version('pyTelegramBotAPI')}")
     logger.info(f"📁 Temp katalog: {TEMP_DIR.absolute()}")
     logger.info("=" * 60)
     logger.info("✅ Bot ishga tushdi!")
