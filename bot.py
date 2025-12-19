@@ -238,16 +238,98 @@ def handle_instagram(message: types.Message) -> None:
         url = message.text.strip().split('?')[0]
         status_msg = bot.reply_to(message, "📱 Instagram yuklanmoqda...")
         
+        logger.info(f"Instagram URL: {url}")
+        
+        # Alternative API - Insta Downloader (no login required)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+        }
+        
+        # Method 1: Try with SaveFrom.net API
+        try:
+            api_url = f"https://v3.savefrom.net/api/ajaxSearch"
+            data = {
+                'q': url,
+                'lang': 'en'
+            }
+            response = requests.post(api_url, data=data, headers=headers, timeout=20)
+            result = response.json()
+            
+            if result.get('status') == 'ok' and result.get('data'):
+                # Parse download links
+                import json
+                from html.parser import HTMLParser
+                
+                class LinkParser(HTMLParser):
+                    def __init__(self):
+                        super().__init__()
+                        self.links = []
+                    
+                    def handle_starttag(self, tag, attrs):
+                        if tag == 'a':
+                            for attr, value in attrs:
+                                if attr == 'href' and value.startswith('http'):
+                                    self.links.append(value)
+                
+                parser = LinkParser()
+                parser.feed(result['data'])
+                
+                if parser.links:
+                    download_url = parser.links[0]
+                    
+                    video_response = requests.get(download_url, stream=True, timeout=60, headers=headers)
+                    video_response.raise_for_status()
+                    
+                    video_hash = create_hash(url)
+                    video_path = TEMP_DIR / f"ig_{video_hash}.mp4"
+                    
+                    with open(video_path, 'wb') as f:
+                        for chunk in video_response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    
+                    if video_path.stat().st_size < 1000:
+                        raise Exception("Fayl juda kichik")
+                    
+                    if video_path.stat().st_size > MAX_FILE_SIZE:
+                        bot.edit_message_text("❌ Video juda katta (50 MB)", message.chat.id, status_msg.message_id)
+                        return
+                    
+                    btn_hash = create_hash(str(video_path))
+                    markup = types.InlineKeyboardMarkup()
+                    markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"music_{btn_hash}"))
+                    
+                    with open(video_path, 'rb') as vf:
+                        bot.send_video(message.chat.id, vf, reply_markup=markup, caption="📱 Instagram", supports_streaming=True, timeout=120)
+                    
+                    (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
+                    bot.delete_message(message.chat.id, status_msg.message_id)
+                    logger.info("✅ Instagram yuborildi (SaveFrom)")
+                    return
+        except Exception as e:
+            logger.warning(f"SaveFrom API xatosi: {e}")
+        
+        # Method 2: Fallback to yt-dlp with cookies
+        bot.edit_message_text("📱 Instagram yuklanmoqda (alternate)...", message.chat.id, status_msg.message_id)
+        
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'format': 'best',
             'outtmpl': str(TEMP_DIR / 'ig_%(id)s.%(ext)s'),
             'socket_timeout': 30,
-            'retries': 5,
+            'retries': 3,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
             },
+            'extractor_args': {
+                'instagram': {
+                    'api_version': 'v1'
+                }
+            }
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -259,13 +341,13 @@ def handle_instagram(message: types.Message) -> None:
             video_files = sorted(TEMP_DIR.glob('ig_*.mp4'), key=lambda f: f.stat().st_mtime, reverse=True)
         
         if not video_files:
-            bot.edit_message_text("❌ Video yuklanmadi", message.chat.id, status_msg.message_id)
+            bot.edit_message_text("❌ Video yuklanmadi\n\nInstagram private bo'lishi mumkin", message.chat.id, status_msg.message_id)
             return
         
         video_path = video_files[0]
         
         if video_path.stat().st_size > MAX_FILE_SIZE:
-            bot.edit_message_text("❌ Video juda katta (50 MB dan oshiq)", message.chat.id, status_msg.message_id)
+            bot.edit_message_text("❌ Video juda katta (50 MB)", message.chat.id, status_msg.message_id)
             return
         
         btn_hash = create_hash(str(video_path))
@@ -277,12 +359,12 @@ def handle_instagram(message: types.Message) -> None:
         
         (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
         bot.delete_message(message.chat.id, status_msg.message_id)
-        logger.info("✅ Instagram yuborildi")
+        logger.info("✅ Instagram yuborildi (yt-dlp)")
     
     except Exception as e:
         logger.error(f"Instagram xatosi: {e}")
         if status_msg:
-            bot.edit_message_text("❌ Xatolik yuz berdi", message.chat.id, status_msg.message_id)
+            bot.edit_message_text("❌ Instagram yuklanmadi\n\nBoshqa link bilan urinib ko'ring", message.chat.id, status_msg.message_id)
     
     finally:
         if video_path:
@@ -543,41 +625,95 @@ def handle_search(message: types.Message) -> None:
         ydl_opts = {'quiet': True, 'extract_flat': True}
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch5:{query}", download=False)
+            info = ydl.extract_info(f"ytsearch40:{query}", download=False)
             songs = info.get('entries', [])
         
         if not songs:
             bot.edit_message_text("❌ Topilmadi", message.chat.id, status_msg.message_id)
             return
         
-        text = [f"🔍 *{query}* natijalar:\n"]
-        markup = types.InlineKeyboardMarkup(row_width=5)
-        buttons = []
+        # Pagination qo'shish
+        user_sessions[message.chat.id] = {
+            'songs': songs,
+            'query': query,
+            'page': 0
+        }
         
-        for idx, song in enumerate(songs[:5], 1):
-            if not song:
-                continue
-            title = song.get('title', 'Unknown')[:40]
-            text.append(f"{idx}. {title}")
-            
-            url = song.get('url') or song.get('webpage_url')
-            if url:
-                h = create_hash(url)
-                (TEMP_DIR / f"song_{h}.txt").write_text(f"{url}|{title}")
-                buttons.append(types.InlineKeyboardButton(str(idx), callback_data=f"dl_{h}"))
-        
-        if buttons:
-            markup.add(*buttons)
-        
-        try:
-            bot.edit_message_text("\n".join(text), message.chat.id, status_msg.message_id, reply_markup=markup, parse_mode='Markdown')
-        except:
-            bot.edit_message_text("\n".join(text).replace('*', ''), message.chat.id, status_msg.message_id, reply_markup=markup)
+        show_search_page(message.chat.id, songs, query, 0, status_msg.message_id)
     
     except Exception as e:
         logger.error(f"Qidiruv xatosi: {e}")
         if status_msg:
             bot.edit_message_text("❌ Xatolik", message.chat.id, status_msg.message_id)
+
+def show_search_page(chat_id: int, songs: List, query: str, page: int, msg_id: int = None):
+    """Qidiruv natijalarini sahifalash bilan ko'rsatish"""
+    per_page = 5
+    start = page * per_page
+    end = start + per_page
+    page_songs = songs[start:end]
+    
+    if not page_songs:
+        bot.send_message(chat_id, "❌ Boshqa natija yo'q")
+        return
+    
+    text = [f"🔍 *{query}* - Sahifa {page + 1}\n"]
+    markup = types.InlineKeyboardMarkup(row_width=5)
+    buttons = []
+    
+    for idx, song in enumerate(page_songs, start=1):
+        if not song:
+            continue
+        title = song.get('title', 'Unknown')[:40]
+        text.append(f"{idx}. {title}")
+        
+        url = song.get('url') or song.get('webpage_url')
+        if url:
+            h = create_hash(url)
+            (TEMP_DIR / f"song_{h}.txt").write_text(f"{url}|{title}")
+            buttons.append(types.InlineKeyboardButton(str(idx), callback_data=f"dl_{h}"))
+    
+    if buttons:
+        markup.add(*buttons)
+    
+    # Navigation buttons
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(types.InlineKeyboardButton("⬅️ Oldingi", callback_data=f"page_{page-1}"))
+    if end < len(songs):
+        nav_buttons.append(types.InlineKeyboardButton("➡️ Keyingi", callback_data=f"page_{page+1}"))
+    
+    if nav_buttons:
+        markup.row(*nav_buttons)
+    
+    try:
+        if msg_id:
+            bot.edit_message_text("\n".join(text), chat_id, msg_id, reply_markup=markup, parse_mode='Markdown')
+        else:
+            bot.send_message(chat_id, "\n".join(text), reply_markup=markup, parse_mode='Markdown')
+    except:
+        if msg_id:
+            bot.edit_message_text("\n".join(text).replace('*', ''), chat_id, msg_id, reply_markup=markup)
+        else:
+            bot.send_message(chat_id, "\n".join(text).replace('*', ''), reply_markup=markup)
+
+# ==================== PAGE NAVIGATION ====================
+@bot.callback_query_handler(func=lambda c: c.data.startswith('page_'))
+def handle_page_navigation(call: types.CallbackQuery) -> None:
+    try:
+        page = int(call.data.split('_')[1])
+        
+        session = user_sessions.get(call.message.chat.id)
+        if not session:
+            bot.answer_callback_query(call.id, "❌ Sessiya tugagan, qayta qidiring", show_alert=True)
+            return
+        
+        bot.answer_callback_query(call.id)
+        show_search_page(call.message.chat.id, session['songs'], session['query'], page, call.message.message_id)
+    
+    except Exception as e:
+        logger.error(f"Page navigation xatosi: {e}")
+        bot.answer_callback_query(call.id, "❌ Xatolik", show_alert=True)
 
 # ==================== DOWNLOAD SONG ====================
 @bot.callback_query_handler(func=lambda c: c.data.startswith('dl_'))
