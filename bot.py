@@ -780,6 +780,8 @@ def start_periodic_cleanup():
 
 # ==================== MAIN ====================
 def main():
+    global bot
+    
     logger.info("=" * 60)
     logger.info("🎵 MULTI-PLATFORM DOWNLOADER BOT")
     logger.info("📱 Instagram, TikTok, Snapchat, Likee, Pinterest")
@@ -813,7 +815,6 @@ def main():
                 if retry_count < max_retries:
                     logger.info("🔄 Qayta urinilmoqda...")
                     # Botni qayta init qilish
-                    global bot
                     bot = init_bot()
                 else:
                     logger.error("❌ Maksimal urinishlar soni tugadi")
