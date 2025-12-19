@@ -240,43 +240,29 @@ def handle_instagram(message: types.Message) -> None:
         
         logger.info(f"Instagram URL: {url}")
         
-        # Alternative API - Insta Downloader (no login required)
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json',
-        }
-        
-        # Method 1: Try with SaveFrom.net API
+        # Method 1: InstaLoader API (bepul, login kerak emas)
         try:
-            api_url = f"https://v3.savefrom.net/api/ajaxSearch"
-            data = {
-                'q': url,
-                'lang': 'en'
+            api_url = "https://instasupersave.com/api/convert"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Content-Type': 'application/json',
             }
-            response = requests.post(api_url, data=data, headers=headers, timeout=20)
-            result = response.json()
             
-            if result.get('status') == 'ok' and result.get('data'):
-                # Parse download links
-                import json
-                from html.parser import HTMLParser
+            payload = {'url': url}
+            response = requests.post(api_url, json=payload, headers=headers, timeout=20)
+            
+            if response.status_code == 200:
+                data = response.json()
                 
-                class LinkParser(HTMLParser):
-                    def __init__(self):
-                        super().__init__()
-                        self.links = []
-                    
-                    def handle_starttag(self, tag, attrs):
-                        if tag == 'a':
-                            for attr, value in attrs:
-                                if attr == 'href' and value.startswith('http'):
-                                    self.links.append(value)
+                # Video URL olish
+                download_url = None
+                if isinstance(data, list) and len(data) > 0:
+                    download_url = data[0].get('url')
+                elif isinstance(data, dict):
+                    download_url = data.get('url') or data.get('download_url')
                 
-                parser = LinkParser()
-                parser.feed(result['data'])
-                
-                if parser.links:
-                    download_url = parser.links[0]
+                if download_url:
+                    logger.info(f"Download URL topildi: {download_url[:50]}...")
                     
                     video_response = requests.get(download_url, stream=True, timeout=60, headers=headers)
                     video_response.raise_for_status()
@@ -294,6 +280,7 @@ def handle_instagram(message: types.Message) -> None:
                     
                     if video_path.stat().st_size > MAX_FILE_SIZE:
                         bot.edit_message_text("❌ Video juda katta (50 MB)", message.chat.id, status_msg.message_id)
+                        safe_delete(video_path)
                         return
                     
                     btn_hash = create_hash(str(video_path))
@@ -305,69 +292,81 @@ def handle_instagram(message: types.Message) -> None:
                     
                     (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
                     bot.delete_message(message.chat.id, status_msg.message_id)
-                    logger.info("✅ Instagram yuborildi (SaveFrom)")
+                    logger.info("✅ Instagram yuborildi (InstaSupersave)")
                     return
         except Exception as e:
-            logger.warning(f"SaveFrom API xatosi: {e}")
+            logger.warning(f"InstaSupersave API xatosi: {e}")
         
-        # Method 2: Fallback to yt-dlp with cookies
-        bot.edit_message_text("📱 Instagram yuklanmoqda (alternate)...", message.chat.id, status_msg.message_id)
-        
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'format': 'best',
-            'outtmpl': str(TEMP_DIR / 'ig_%(id)s.%(ext)s'),
-            'socket_timeout': 30,
-            'retries': 3,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-            },
-            'extractor_args': {
-                'instagram': {
-                    'api_version': 'v1'
-                }
+        # Method 2: DownloadGram API
+        try:
+            bot.edit_message_text("📱 Instagram yuklanmoqda (method 2)...", message.chat.id, status_msg.message_id)
+            
+            api_url = "https://downloadgram.org/wp-json/aio-dl/video-data/"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             }
-        }
+            
+            response = requests.post(api_url, data={'url': url}, headers=headers, timeout=20)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('medias') and len(data['medias']) > 0:
+                    download_url = data['medias'][0].get('url')
+                    
+                    if download_url:
+                        video_response = requests.get(download_url, stream=True, timeout=60, headers=headers)
+                        video_response.raise_for_status()
+                        
+                        video_hash = create_hash(url)
+                        video_path = TEMP_DIR / f"ig_{video_hash}.mp4"
+                        
+                        with open(video_path, 'wb') as f:
+                            for chunk in video_response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                        
+                        if video_path.stat().st_size < 1000:
+                            raise Exception("Fayl juda kichik")
+                        
+                        if video_path.stat().st_size > MAX_FILE_SIZE:
+                            bot.edit_message_text("❌ Video juda katta (50 MB)", message.chat.id, status_msg.message_id)
+                            safe_delete(video_path)
+                            return
+                        
+                        btn_hash = create_hash(str(video_path))
+                        markup = types.InlineKeyboardMarkup()
+                        markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"music_{btn_hash}"))
+                        
+                        with open(video_path, 'rb') as vf:
+                            bot.send_video(message.chat.id, vf, reply_markup=markup, caption="📱 Instagram", supports_streaming=True, timeout=120)
+                        
+                        (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
+                        bot.delete_message(message.chat.id, status_msg.message_id)
+                        logger.info("✅ Instagram yuborildi (DownloadGram)")
+                        return
+        except Exception as e:
+            logger.warning(f"DownloadGram API xatosi: {e}")
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_id = info.get('id', 'video')
-        
-        video_files = list(TEMP_DIR.glob(f"ig_{video_id}*"))
-        if not video_files:
-            video_files = sorted(TEMP_DIR.glob('ig_*.mp4'), key=lambda f: f.stat().st_mtime, reverse=True)
-        
-        if not video_files:
-            bot.edit_message_text("❌ Video yuklanmadi\n\nInstagram private bo'lishi mumkin", message.chat.id, status_msg.message_id)
-            return
-        
-        video_path = video_files[0]
-        
-        if video_path.stat().st_size > MAX_FILE_SIZE:
-            bot.edit_message_text("❌ Video juda katta (50 MB)", message.chat.id, status_msg.message_id)
-            return
-        
-        btn_hash = create_hash(str(video_path))
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🎵 Musiqani aniqlash", callback_data=f"music_{btn_hash}"))
-        
-        with open(video_path, 'rb') as vf:
-            bot.send_video(message.chat.id, vf, reply_markup=markup, caption="📱 Instagram", supports_streaming=True, timeout=120)
-        
-        (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
-        bot.delete_message(message.chat.id, status_msg.message_id)
-        logger.info("✅ Instagram yuborildi (yt-dlp)")
+        # Agar hech qaysi usul ishlamasa
+        bot.edit_message_text(
+            "❌ Instagram video yuklanmadi\n\n"
+            "Sabablar:\n"
+            "• Video private bo'lishi mumkin\n"
+            "• Link noto'g'ri\n"
+            "• Instagram blok qilgan\n\n"
+            "Boshqa link bilan urinib ko'ring",
+            message.chat.id,
+            status_msg.message_id
+        )
     
     except Exception as e:
         logger.error(f"Instagram xatosi: {e}")
         if status_msg:
-            bot.edit_message_text("❌ Instagram yuklanmadi\n\nBoshqa link bilan urinib ko'ring", message.chat.id, status_msg.message_id)
+            bot.edit_message_text("❌ Instagram yuklanmadi", message.chat.id, status_msg.message_id)
     
     finally:
-        if video_path:
+        if video_path and video_path.exists():
             import threading
             def delayed(): time.sleep(60); safe_delete(video_path)
             threading.Thread(target=delayed, daemon=True).start()
