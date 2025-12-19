@@ -340,7 +340,6 @@ def start_command(message: types.Message) -> None:
         "📱 *Instagram/TikTok* linki yuboring\n"
         "🎤 *Qo'shiq* yoki *ijrochi* nomini yozing\n"
         "🎵 *Audio* fayl yuboring (aniqlash uchun)\n\n"
-        "⚡ Python 3.11.0 | Tez va ishonchli\n"
         "👨‍💻 Dasturchi: @Rustamov_v1"
     )
     
@@ -450,7 +449,7 @@ def handle_instagram(message: types.Message) -> None:
     
     try:
         url = message.text.strip().split('?')[0]
-        status_msg = bot.reply_to(message, "📱 Instagram yuklanmoqda...")
+        status_msg = bot.reply_to(message, "⏳")
         
         logger.info(f"Instagram URL: {url}")
         
