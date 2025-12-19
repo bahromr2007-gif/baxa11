@@ -51,12 +51,22 @@ bot_instance: Optional[telebot.TeleBot] = None
 # ==================== BOT INIT ====================
 def init_bot() -> telebot.TeleBot:
     global bot_instance
-    try:
-        temp_bot = telebot.TeleBot(BOT_TOKEN)
-        temp_bot.remove_webhook()
-        logger.info("✅ Webhook o'chirildi")
-    except Exception as e:
-        logger.warning(f"⚠️ Webhook xatosi: {e}")
+    
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            temp_bot = telebot.TeleBot(BOT_TOKEN)
+            temp_bot.remove_webhook()
+            temp_bot.delete_webhook(drop_pending_updates=True)
+            logger.info("✅ Webhook o'chirildi")
+            time.sleep(2)  # Webhook o'chishi uchun kutish
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ Webhook xatosi (urinish {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(5)
+            else:
+                logger.error("❌ Webhook o'chirilmadi, davom etamiz...")
     
     bot_instance = telebot.TeleBot(BOT_TOKEN, parse_mode=None, threaded=False, skip_pending=True)
     return bot_instance
@@ -779,13 +789,52 @@ def main():
     cleanup_old_files()
     start_periodic_cleanup()
     
-    try:
-        bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30, none_stop=True)
-    except KeyboardInterrupt:
-        shutdown_handler(None, None)
-    except Exception as e:
-        logger.error(f"❌ Fatal xatolik: {e}")
-        sys.exit(1)
+    retry_count = 0
+    max_retries = 3
+    
+    while retry_count < max_retries:
+        try:
+            logger.info(f"🔄 Polling boshlandi (urinish {retry_count + 1})...")
+            bot.infinity_polling(
+                skip_pending=True,
+                timeout=30,
+                long_polling_timeout=30,
+                none_stop=True,
+                allowed_updates=['message', 'callback_query']
+            )
+            break  # Agar muvaffaqiyatli bo'lsa, loopdan chiqish
+            
+        except telebot.apihelper.ApiException as e:
+            if "Conflict" in str(e) and "terminated by other getUpdates" in str(e):
+                logger.warning(f"⚠️ Conflict xatosi: boshqa bot instance ishlayapti")
+                logger.info("⏳ 30 soniya kutilmoqda...")
+                time.sleep(30)
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.info("🔄 Qayta urinilmoqda...")
+                    # Botni qayta init qilish
+                    global bot
+                    bot = init_bot()
+                else:
+                    logger.error("❌ Maksimal urinishlar soni tugadi")
+                    sys.exit(1)
+            else:
+                logger.error(f"❌ API xatosi: {e}")
+                sys.exit(1)
+        
+        except KeyboardInterrupt:
+            logger.info("\n⌨️ Keyboard interrupt")
+            shutdown_handler(None, None)
+        
+        except Exception as e:
+            logger.error(f"❌ Xatolik: {e}")
+            retry_count += 1
+            if retry_count < max_retries:
+                logger.info(f"🔄 5 soniyadan keyin qayta urinish ({retry_count}/{max_retries})...")
+                time.sleep(5)
+            else:
+                logger.error("❌ Maksimal urinishlar soni tugadi")
+                sys.exit(1)
 
 if __name__ == '__main__':
     main()
