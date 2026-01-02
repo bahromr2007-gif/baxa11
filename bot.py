@@ -594,7 +594,6 @@ def handle_instagram(message: types.Message) -> None:
             import threading
             threading.Thread(target=delayed_delete, daemon=True).start()
 # ==================== TIKTOK HANDLER ====================
-# ==================== TIKTOK HANDLER ====================
 @bot.message_handler(func=lambda m: m.text and is_tiktok_url(m.text))
 def handle_tiktok(message: types.Message) -> None:
     """TikTok video yuklash"""
@@ -834,9 +833,9 @@ def handle_search(message: types.Message) -> None:
         
         logger.info(f"Qidiruv: {query}")
         
-        # YouTube qidiruv
+        # YouTube qidiruv - 50 ta qidirish
         with yt_dlp.YoutubeDL(SEARCH_OPTIONS) as ydl:
-            info = ydl.extract_info(f"ytsearch10:{query}", download=False)
+            info = ydl.extract_info(f"ytsearch50:{query}", download=False)
             songs = info.get('entries', [])
         
         if not songs:
@@ -851,11 +850,12 @@ def handle_search(message: types.Message) -> None:
         user_sessions[message.chat.id] = {
             'query': query,
             'songs': songs,
+            'page': 0,  # Sahifa raqami
             'timestamp': datetime.now()
         }
         
-        # Natijalarni ko'rsatish
-        show_search_results(message.chat.id, songs[:10], query)
+        # Birinchi sahifani ko'rsatish
+        show_search_results(message.chat.id, 0)
         bot.delete_message(message.chat.id, status_msg.message_id)
     
     except Exception as e:
@@ -867,45 +867,97 @@ def handle_search(message: types.Message) -> None:
                 status_msg.message_id
             )
 
-def show_search_results(chat_id: int, songs: List, query: str) -> None:
-    """Qidiruv natijalarini ko'rsatish"""
-    text_lines = [f"🔍 *{query}* natijalar:\n"]
+def show_search_results(chat_id: int, page: int = 0) -> None:
+    """Qidiruv natijalarini ko'rsatish (sahifalash bilan)"""
+    # Session ma'lumotlarini olish
+    session = user_sessions.get(chat_id)
+    if not session:
+        bot.send_message(chat_id, "❌ Sessiya muddati tugagan\n\nYangi qidiruv bering")
+        return
+    
+    query = session['query']
+    songs = session['songs']
+    total_songs = len(songs)
+    page_size = 10  # Har sahifada 10 ta
+    
+    # Sahifa hisoblash
+    total_pages = (total_songs + page_size - 1) // page_size  # Butun qism
+    page = max(0, min(page, total_pages - 1))  # Sahifa chegarasi
+    
+    # Joriy sahifa uchun qo'shiqlarni kesib olish
+    start_idx = page * page_size
+    end_idx = min(start_idx + page_size, total_songs)
+    page_songs = songs[start_idx:end_idx]
+    
+    # Matnni yaratish
+    text_lines = [
+        f"🔍 *{query}*",
+        f"📄 Sahifa: {page + 1}/{total_pages} | Jami: {total_songs} ta",
+        ""
+    ]
+    
     markup = types.InlineKeyboardMarkup(row_width=5)
     
-    button_row_1 = []
-    button_row_2 = []
+    # Har sahifa uchun tugmalar (1-10 gacha)
+    button_rows = []
+    current_row = []
     
-    for idx, song in enumerate(songs, start=1):
+    for idx, song in enumerate(page_songs, start=1):
         if not song:
             continue
         
-        title = song.get('title', 'Unknown')[:50]
+        # Qo'shiq tartib raqami (umumiy)
+        global_idx = start_idx + idx
+        
+        title = song.get('title', 'Nomaʼlum')[:45]
         duration = format_duration(song.get('duration'))
         
-        text_lines.append(f"{idx}. {title}{duration}")
+        text_lines.append(f"{global_idx}. {title}{duration}")
         
+        # URL va hash yaratish
         url = song.get('url') or song.get('webpage_url')
         if url:
-            h = create_hash(url)
-            (TEMP_DIR / f"song_{h}.txt").write_text(f"{url}|{title}")
+            h = create_hash(f"{url}_{global_idx}")
+            (TEMP_DIR / f"song_{h}.txt").write_text(f"{url}|{title}|{global_idx}")
             
-            btn = types.InlineKeyboardButton(str(idx), callback_data=f"dl_{h}")
+            btn = types.InlineKeyboardButton(str(global_idx), callback_data=f"dl_{h}")
+            current_row.append(btn)
             
-            if idx <= 5:
-                button_row_1.append(btn)
-            else:
-                button_row_2.append(btn)
+            # Har 5 ta tugmadan keyin yangi qator
+            if len(current_row) == 5:
+                button_rows.append(current_row)
+                current_row = []
     
-    if button_row_1:
-        markup.add(*button_row_1)
-    if button_row_2:
-        markup.add(*button_row_2)
+    # Oxirgi qatorni qo'shish
+    if current_row:
+        button_rows.append(current_row)
     
-    # Navigation
+    # Tugma qatorlarini markupga qo'shish
+    for row in button_rows:
+        markup.add(*row)
+    
+    # Navigation tugmalari - "X" ortasida
+    nav_buttons = []
+    
+    if page > 0:
+        nav_buttons.append(types.InlineKeyboardButton("⬅️ Oldingi", callback_data=f"page_{page-1}"))
+    
+    nav_buttons.append(types.InlineKeyboardButton("❌", callback_data="close_page"))
+    
+    if page < total_pages - 1:
+        nav_buttons.append(types.InlineKeyboardButton("Keyingi ➡️", callback_data=f"page_{page+1}"))
+    
+    if nav_buttons:
+        markup.row(*nav_buttons)
+    
+    # Pastki qator - yangi qidiruv va bosh menyu
     markup.row(
-        types.InlineKeyboardButton("🔄 Yangi", callback_data="nav_new"),
-        types.InlineKeyboardButton("🏠 Bosh", callback_data="nav_home")
+        types.InlineKeyboardButton("🔄 Yangi qidiruv", callback_data="nav_new"),
+        types.InlineKeyboardButton("🏠 Bosh menyu", callback_data="nav_home")
     )
+    
+    # Sessionni yangilash
+    user_sessions[chat_id]['page'] = page
     
     try:
         bot.send_message(
@@ -920,6 +972,34 @@ def show_search_results(chat_id: int, songs: List, query: str) -> None:
             "\n".join(text_lines).replace('*', ''),
             reply_markup=markup
         )
+
+# ==================== PAGE NAVIGATION ====================
+@bot.callback_query_handler(func=lambda c: c.data.startswith('page_'))
+def handle_page_navigation(call: types.CallbackQuery) -> None:
+    """Sahifa navigatsiyasi"""
+    try:
+        page = int(call.data.split('_')[1])
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        show_search_results(call.message.chat.id, page)
+        bot.answer_callback_query(call.id)
+    except Exception as e:
+        logger.error(f"Page navigation xatosi: {e}")
+        bot.answer_callback_query(call.id, "❌ Xatolik", show_alert=True)
+
+# ==================== CLOSE PAGE HANDLER ====================
+@bot.callback_query_handler(func=lambda c: c.data == "close_page")
+def handle_close_page(call: types.CallbackQuery) -> None:
+    """Sahifani yopish"""
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        bot.answer_callback_query(call.id, "✅ Sahifa yopildi")
+        
+        # Sessionni tozalash (ixtiyoriy)
+        if call.message.chat.id in user_sessions:
+            del user_sessions[call.message.chat.id]
+    except Exception as e:
+        logger.error(f"Close page xatosi: {e}")
+        bot.answer_callback_query(call.id, "❌ Xatolik", show_alert=True)
 
 # ==================== DOWNLOAD SONG ====================
 @bot.callback_query_handler(func=lambda c: c.data.startswith('dl_'))
@@ -937,7 +1017,16 @@ def handle_song_download(call: types.CallbackQuery) -> None:
             return
         
         data = data_file.read_text().strip()
-        url, title = data.split('|', 1) if '|' in data else (data, 'Audio')
+        parts = data.split('|', 2)
+        
+        if len(parts) == 3:
+            url, title, song_num = parts
+            title = f"{song_num}. {title}"
+        elif len(parts) == 2:
+            url, title = parts
+        else:
+            url = parts[0]
+            title = 'Audio'
         
         bot.answer_callback_query(call.id, "⏳ Yuklanmoqda...")
         logger.info(f"Yuklash: {title}")
@@ -950,7 +1039,8 @@ def handle_song_download(call: types.CallbackQuery) -> None:
                 bot.send_audio(
                     call.message.chat.id,
                     audio_file,
-                    title=title[:64]
+                    title=title[:64],
+                    caption=f"✅ {title}"
                 )
             logger.info(f"✅ Yuklandi: {title}")
         else:
@@ -963,7 +1053,7 @@ def handle_song_download(call: types.CallbackQuery) -> None:
     
     except Exception as e:
         logger.error(f"Download xatosi: {e}")
-        bot.send_message(call.message.chat.id, "❌ Xatolik yuz berdi")
+        bot.answer_callback_query(call.id, "❌ Xatolik yuz berdi", show_alert=True)
     
     finally:
         safe_delete(audio_file_path)
