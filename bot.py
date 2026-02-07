@@ -1184,12 +1184,7 @@ def show_search_results(chat_id: int, page: int = 0) -> None:
     if nav_buttons:
         markup.row(*nav_buttons)
     
-    # Pastki qator - yangi qidiruv va bosh menyu
-    markup.row(
-        types.InlineKeyboardButton("🔄 Yangi qidiruv", callback_data="nav_new"),
-        types.InlineKeyboardButton("🏠 Bosh menyu", callback_data="nav_home")
-    )
-    
+
     # Sessionni yangilash
     user_sessions[chat_id]['page'] = page
     
