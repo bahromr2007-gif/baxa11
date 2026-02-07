@@ -98,37 +98,74 @@ BASE_OPTIONS = {
 
 INSTAGRAM_OPTIONS = {
     **BASE_OPTIONS,
-    'format': 'best',
+    'format': 'best[filesize<=50M]',
     'outtmpl': str(TEMP_DIR / 'ig_%(id)s.%(ext)s'),
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
         'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
     },
 }
 
 TIKTOK_OPTIONS = {
     **BASE_OPTIONS,
-    'format': 'best',
+    'format': 'best[filesize<=50M]',
     'outtmpl': str(TEMP_DIR / 'tt_%(id)s.%(ext)s'),
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.tiktok.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
     },
 }
 
 AUDIO_OPTIONS = {
     **BASE_OPTIONS,
-    'format': 'bestaudio/best',
+    'format': 'bestaudio/best[filesize<30M]',
     'outtmpl': str(TEMP_DIR / 'audio_%(title)s.%(ext)s'),
     'restrictfilenames': True,
     'windowsfilenames': True,
+    'noplaylist': True,
+    'socket_timeout': 45,
+    'retries': 10,
+    'fragment_retries': 10,
+    'ignoreerrors': True,
+    'no_color': True,
+    'geo_bypass': True,
+    'prefer_ffmpeg': True,
+    'nocheckcertificate': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web']
+        }
+    },
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+    },
     'postprocessors': [{
         'key': 'FFmpegExtractAudio',
         'preferredcodec': 'mp3',
         'preferredquality': '128',
     }],
+    'quiet': True,
+    'no_warnings': True,
 }
 
 SEARCH_OPTIONS = {
@@ -449,51 +486,75 @@ def handle_instagram(message: types.Message) -> None:
     
     try:
         url = message.text.strip().split('?')[0]
-        status_msg = bot.reply_to(message, "⏳")
+        status_msg = bot.reply_to(message, "⏳ Instagram yuklanmoqda...")
         
         logger.info(f"Instagram URL: {url}")
         
-        # yt-dlp bilan yuklash (yaxshilangan sozlamalar)
+        # Yangilangan yt-dlp sozlamalari
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'format': 'best',
+            'format': 'best[filesize<=50M]',
             'outtmpl': str(TEMP_DIR / 'ig_%(id)s.%(ext)s'),
-            'socket_timeout': 30,
-            'retries': 5,
-            'fragment_retries': 5,
+            'socket_timeout': 45,
+            'retries': 10,
+            'fragment_retries': 10,
             'nocheckcertificate': True,
             'geo_bypass': True,
-            'prefer_insecure': True,
+            'prefer_ffmpeg': True,
+            'ignoreerrors': True,
+            'no_color': True,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
-                'Accept': '*/*',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
-                'Origin': 'https://www.instagram.com',
-                'Referer': 'https://www.instagram.com/',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
             },
             'cookiefile': None,
             'extract_flat': False,
+            'postprocessors': [],
         }
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_id = info.get('id', 'video')
+        # Yuklash jarayoni
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    video_id = info.get('id', f'video_{attempt}')
+                    logger.info(f"Download attempt {attempt + 1}: {video_id}")
+                
+                # Video faylni topish
+                video_files = list(TEMP_DIR.glob(f"ig_{video_id}*"))
+                if not video_files:
+                    video_files = sorted(
+                        list(TEMP_DIR.glob('ig_*.mp4')) + 
+                        list(TEMP_DIR.glob('ig_*.webm')) + 
+                        list(TEMP_DIR.glob('ig_*.mkv')),
+                        key=lambda f: f.stat().st_mtime,
+                        reverse=True
+                    )
+                
+                if video_files:
+                    video_path = video_files[0]
+                    break
+                    
+            except yt_dlp.utils.DownloadError as e:
+                if attempt == max_attempts - 1:
+                    raise
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                time.sleep(2)
+                continue
         
-        # Video topish
-        video_files = list(TEMP_DIR.glob(f"ig_{video_id}*"))
-        if not video_files:
-            video_files = sorted(
-                list(TEMP_DIR.glob('ig_*.mp4')) + list(TEMP_DIR.glob('ig_*.webm')),
-                key=lambda f: f.stat().st_mtime,
-                reverse=True
-            )
-        
-        if not video_files:
+        if not video_path or not video_path.exists():
             bot.edit_message_text(
                 "❌ Video yuklanmadi\n\n"
                 "Sabablar:\n"
@@ -505,22 +566,20 @@ def handle_instagram(message: types.Message) -> None:
             )
             return
         
-        video_path = video_files[0]
-        
-        # Agar .webm bo'lsa, .mp4 ga o'zgartirish
+        # Fayl formatini tekshirish
         if video_path.suffix == '.webm':
             mp4_path = video_path.with_suffix('.mp4')
             try:
                 subprocess.run(
                     ['ffmpeg', '-i', str(video_path), '-c', 'copy', str(mp4_path), '-y'],
                     capture_output=True,
-                    timeout=60,
+                    timeout=90,
                     check=True
                 )
                 safe_delete(video_path)
                 video_path = mp4_path
-            except:
-                pass  # Agar ffmpeg ishlamasa, webm yuboramiz
+            except Exception as e:
+                logger.warning(f"WebM to MP4 conversion failed: {e}")
         
         # Hajmni tekshirish
         file_size = video_path.stat().st_size
@@ -552,14 +611,14 @@ def handle_instagram(message: types.Message) -> None:
                 reply_markup=markup,
                 caption="📱 Instagram",
                 supports_streaming=True,
-                timeout=120
+                timeout=180
             )
         
         # Session saqlash
         (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
         
         bot.delete_message(message.chat.id, status_msg.message_id)
-        logger.info("✅ Instagram video yuborildi")
+        logger.info(f"✅ Instagram video yuborildi: {video_path.name}")
     
     except yt_dlp.utils.DownloadError as e:
         error_msg = str(e)
@@ -568,8 +627,10 @@ def handle_instagram(message: types.Message) -> None:
         if status_msg:
             if "Private" in error_msg or "login" in error_msg.lower():
                 msg = "❌ Bu video private (shaxsiy)"
-            elif "unavailable" in error_msg.lower():
+            elif "unavailable" in error_msg.lower() or "404" in error_msg:
                 msg = "❌ Video mavjud emas"
+            elif "403" in error_msg:
+                msg = "❌ Yuklash bloklangan (403 Forbidden)\n\nBoshqa link yuboring"
             else:
                 msg = "❌ Instagram video yuklanmadi\n\nQayta urinib ko'ring"
             
@@ -593,6 +654,7 @@ def handle_instagram(message: types.Message) -> None:
             
             import threading
             threading.Thread(target=delayed_delete, daemon=True).start()
+
 # ==================== TIKTOK HANDLER ====================
 @bot.message_handler(func=lambda m: m.text and is_tiktok_url(m.text))
 def handle_tiktok(message: types.Message) -> None:
@@ -606,42 +668,65 @@ def handle_tiktok(message: types.Message) -> None:
         
         logger.info(f"TikTok URL: {url}")
         
-        # yt-dlp bilan yuklash (yaxshilangan sozlamalar)
+        # Yangilangan yt-dlp sozlamalari
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'format': 'best',
+            'format': 'best[filesize<=50M]',
             'outtmpl': str(TEMP_DIR / 'tt_%(id)s.%(ext)s'),
-            'socket_timeout': 30,
-            'retries': 5,
-            'fragment_retries': 5,
+            'socket_timeout': 45,
+            'retries': 10,
+            'fragment_retries': 10,
             'nocheckcertificate': True,
             'geo_bypass': True,
-            'prefer_insecure': True,
+            'prefer_ffmpeg': True,
+            'ignoreerrors': True,
+            'no_color': True,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
-                'Accept': '*/*',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Referer': 'https://www.tiktok.com/',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
             },
             'extract_flat': False,
         }
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_id = info.get('id', 'video')
+        # Yuklash jarayoni
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    video_id = info.get('id', f'video_{attempt}')
+                    logger.info(f"Download attempt {attempt + 1}: {video_id}")
+                
+                # Video faylni topish
+                video_files = list(TEMP_DIR.glob(f"tt_{video_id}*"))
+                if not video_files:
+                    video_files = sorted(
+                        list(TEMP_DIR.glob('tt_*.mp4')) + 
+                        list(TEMP_DIR.glob('tt_*.webm')) + 
+                        list(TEMP_DIR.glob('tt_*.mkv')),
+                        key=lambda f: f.stat().st_mtime,
+                        reverse=True
+                    )
+                
+                if video_files:
+                    video_path = video_files[0]
+                    break
+                    
+            except yt_dlp.utils.DownloadError as e:
+                if attempt == max_attempts - 1:
+                    raise
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                time.sleep(2)
+                continue
         
-        # Video topish
-        video_files = list(TEMP_DIR.glob(f"tt_{video_id}*"))
-        if not video_files:
-            video_files = sorted(
-                list(TEMP_DIR.glob('tt_*.mp4')) + list(TEMP_DIR.glob('tt_*.webm')),
-                key=lambda f: f.stat().st_mtime,
-                reverse=True
-            )
-        
-        if not video_files:
+        if not video_path or not video_path.exists():
             bot.edit_message_text(
                 "❌ TikTok video yuklanmadi\n\n"
                 "Sabablar:\n"
@@ -653,22 +738,20 @@ def handle_tiktok(message: types.Message) -> None:
             )
             return
         
-        video_path = video_files[0]
-        
-        # Agar .webm bo'lsa, .mp4 ga o'zgartirish
+        # Fayl formatini tekshirish
         if video_path.suffix == '.webm':
             mp4_path = video_path.with_suffix('.mp4')
             try:
                 subprocess.run(
                     ['ffmpeg', '-i', str(video_path), '-c', 'copy', str(mp4_path), '-y'],
                     capture_output=True,
-                    timeout=60,
+                    timeout=90,
                     check=True
                 )
                 safe_delete(video_path)
                 video_path = mp4_path
-            except:
-                pass  # Agar ffmpeg ishlamasa, webm yuboramiz
+            except Exception as e:
+                logger.warning(f"WebM to MP4 conversion failed: {e}")
         
         # Hajmni tekshirish
         file_size = video_path.stat().st_size
@@ -700,14 +783,14 @@ def handle_tiktok(message: types.Message) -> None:
                 reply_markup=markup,
                 caption="📱 TikTok",
                 supports_streaming=True,
-                timeout=120
+                timeout=180
             )
         
         # Session saqlash
         (TEMP_DIR / f"{btn_hash}.path").write_text(str(video_path))
         
         bot.delete_message(message.chat.id, status_msg.message_id)
-        logger.info("✅ TikTok video yuborildi")
+        logger.info(f"✅ TikTok video yuborildi: {video_path.name}")
     
     except yt_dlp.utils.DownloadError as e:
         error_msg = str(e)
@@ -716,8 +799,10 @@ def handle_tiktok(message: types.Message) -> None:
         if status_msg:
             if "Private" in error_msg or "login" in error_msg.lower():
                 msg = "❌ Bu video private (shaxsiy)"
-            elif "unavailable" in error_msg.lower():
+            elif "unavailable" in error_msg.lower() or "404" in error_msg:
                 msg = "❌ Video mavjud emas"
+            elif "403" in error_msg:
+                msg = "❌ Yuklash bloklangan (403 Forbidden)\n\nBoshqa link yuboring"
             else:
                 msg = "❌ TikTok video yuklanmadi\n\nQayta urinib ko'ring"
             
@@ -752,7 +837,7 @@ def handle_video_music_recognition(call: types.CallbackQuery) -> None:
     
     try:
         btn_hash = call.data.split('_')[1]
-        bot.answer_callback_query(call.id, "🎵 Musiqa aniqlanmoqda...")
+        bot.answer_callback_query(call.id, "🎵 Musiqani aniqlanmoqda...")
         
         # Video path olish
         path_file = TEMP_DIR / f"{btn_hash}.path"
