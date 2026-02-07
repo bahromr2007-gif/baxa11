@@ -32,7 +32,6 @@ from shazamio import Shazam
 
 # Video/Audio Download
 import yt_dlp
-print(yt_dlp.version.__version__)
 
 # ==================== LOGGING ====================
 logging.basicConfig(
@@ -86,43 +85,62 @@ def init_bot() -> telebot.TeleBot:
 bot = init_bot()
 
 # ==================== YT-DLP CONFIGURATION ====================
-options = {
-    'format': 'bestaudio/best',
+BASE_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
-    'noplaylist': True,
-    'retries': 10,
-    'fragment_retries': 10,
     'socket_timeout': 30,
+    'retries': 5,
+    'fragment_retries': 5,
     'nocheckcertificate': True,
     'geo_bypass': True,
-    'force_ipv4': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android', 'web', 'ios']
-        }
-    },
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 13)',
-        'Accept-Language': 'en-US,en;q=0.9',
-    },
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
-        'preferredquality': '128',
-    }],
+    'prefer_insecure': True,
+    'ignoreerrors': True,
+    'no_color': True,
+    'compat_opts': ['no-youtube-unavailable-videos'],
 }
 
 INSTAGRAM_OPTIONS = {
-    **BASE_OPTIONS,
+    'quiet': True,
+    'no_warnings': True,
+    'socket_timeout': 30,
+    'retries': 5,
+    'fragment_retries': 5,
+    'nocheckcertificate': True,
+    'geo_bypass': True,
+    'prefer_insecure': True,
+    'ignoreerrors': True,
+    'no_color': True,
+    'compat_opts': ['no-youtube-unavailable-videos'],
     'format': 'best[filesize<=50M]',
     'outtmpl': str(TEMP_DIR / 'ig_%(id)s.%(ext)s'),
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
     },
 }
+
 TIKTOK_OPTIONS = {
-    **BASE_OPTIONS,
+    'quiet': True,
+    'no_warnings': True,
+    'socket_timeout': 30,
+    'retries': 5,
+    'fragment_retries': 5,
+    'nocheckcertificate': True,
+    'geo_bypass': True,
+    'prefer_insecure': True,
+    'ignoreerrors': True,
+    'no_color': True,
+    'compat_opts': ['no-youtube-unavailable-videos'],
     'format': 'best[filesize<=50M]',
     'outtmpl': str(TEMP_DIR / 'tt_%(id)s.%(ext)s'),
     'http_headers': {
@@ -138,7 +156,17 @@ TIKTOK_OPTIONS = {
 }
 
 AUDIO_OPTIONS = {
-    **BASE_OPTIONS,
+    'quiet': True,
+    'no_warnings': True,
+    'socket_timeout': 30,
+    'retries': 5,
+    'fragment_retries': 5,
+    'nocheckcertificate': True,
+    'geo_bypass': True,
+    'prefer_insecure': True,
+    'ignoreerrors': True,
+    'no_color': True,
+    'compat_opts': ['no-youtube-unavailable-videos'],
     'format': 'bestaudio/best[filesize<30M]',
     'outtmpl': str(TEMP_DIR / 'audio_%(title)s.%(ext)s'),
     'restrictfilenames': True,
