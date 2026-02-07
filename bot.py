@@ -32,6 +32,7 @@ from shazamio import Shazam
 
 # Video/Audio Download
 import yt_dlp
+print(yt_dlp.version.__version__)
 
 # ==================== LOGGING ====================
 logging.basicConfig(
@@ -85,18 +86,31 @@ def init_bot() -> telebot.TeleBot:
 bot = init_bot()
 
 # ==================== YT-DLP CONFIGURATION ====================
-BASE_OPTIONS = {
+options = {
+    'format': 'bestaudio/best',
     'quiet': True,
     'no_warnings': True,
+    'noplaylist': True,
+    'retries': 10,
+    'fragment_retries': 10,
     'socket_timeout': 30,
-    'retries': 5,
-    'fragment_retries': 5,
     'nocheckcertificate': True,
     'geo_bypass': True,
-    'prefer_insecure': True,
-    'ignoreerrors': True,
-    'no_color': True,
-    'compat_opts': ['no-youtube-unavailable-videos'],
+    'force_ipv4': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web', 'ios']
+        }
+    },
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 13)',
+        'Accept-Language': 'en-US,en;q=0.9',
+    },
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+        'preferredquality': '128',
+    }],
 }
 
 INSTAGRAM_OPTIONS = {
