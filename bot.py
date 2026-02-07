@@ -89,11 +89,14 @@ BASE_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
     'socket_timeout': 30,
-    'retries': 3,
-    'fragment_retries': 3,
+    'retries': 5,
+    'fragment_retries': 5,
     'nocheckcertificate': True,
     'geo_bypass': True,
     'prefer_insecure': True,
+    'ignoreerrors': True,
+    'no_color': True,
+    'compat_opts': ['no-youtube-unavailable-videos'],
 }
 
 INSTAGRAM_OPTIONS = {
@@ -142,14 +145,12 @@ AUDIO_OPTIONS = {
     'socket_timeout': 45,
     'retries': 10,
     'fragment_retries': 10,
-    'ignoreerrors': True,
-    'no_color': True,
     'geo_bypass': True,
     'prefer_ffmpeg': True,
-    'nocheckcertificate': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web']
+            'player_client': ['android', 'web'],
+            'skip': ['hls', 'dash'],
         }
     },
     'http_headers': {
@@ -158,21 +159,42 @@ AUDIO_OPTIONS = {
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
+        'Referer': 'https://www.youtube.com/',
     },
     'postprocessors': [{
         'key': 'FFmpegExtractAudio',
         'preferredcodec': 'mp3',
         'preferredquality': '128',
     }],
-    'quiet': True,
-    'no_warnings': True,
+    'ignore_no_formats_error': True,
+    'allow_unplayable_formats': False,
 }
 
 SEARCH_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
     'extract_flat': True,
-    'socket_timeout': 20,
+    'socket_timeout': 30,
+    'retries': 5,
+    'fragment_retries': 5,
+    'ignoreerrors': True,
+    'nocheckcertificate': True,
+    'geo_bypass': True,
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Referer': 'https://www.youtube.com/',
+    },
+    'extractor_args': {
+        'youtube': {
+            'skip': ['hls', 'dash'],
+            'player_client': ['web'],
+        }
+    },
+    'ignore_no_formats_error': True,
 }
 
 # ==================== UTILITY FUNCTIONS ====================
@@ -308,8 +330,49 @@ def download_youtube_audio(query: str, filename_hint: str = "") -> Optional[Path
         options = AUDIO_OPTIONS.copy()
         options['outtmpl'] = str(TEMP_DIR / f"audio_{clean_name}.%(ext)s")
         
-        with yt_dlp.YoutubeDL(options) as ydl:
-            ydl.download([f"ytsearch1:{query}"])
+        # Agar query URL bo'lsa, to'g'ridan-to'g'ri yuklash
+        if query.startswith(('http://', 'https://', 'www.')):
+            download_url = query
+        else:
+            # ytsearch1 o'rniga ytsearch10 ishlatamiz (ko'proq variantlar)
+            download_url = f"ytsearch10:{query}"
+        
+        logger.info(f"Yuklash URL: {download_url}")
+        
+        try:
+            with yt_dlp.YoutubeDL(options) as ydl:
+                # Avval info olish
+                info = ydl.extract_info(download_url, download=False)
+                
+                # Agar search bo'lsa, birinchi natijani olish
+                if download_url.startswith('ytsearch'):
+                    if info.get('entries'):
+                        first_result = info['entries'][0]
+                        if first_result:
+                            video_url = first_result.get('url') or first_result.get('webpage_url')
+                            if video_url:
+                                logger.info(f"Topilgan video: {first_result.get('title', 'Unknown')}")
+                                # To'g'ri video URL bilan yuklash
+                                ydl.download([video_url])
+                            else:
+                                ydl.download([download_url])
+                        else:
+                            ydl.download([download_url])
+                    else:
+                        ydl.download([download_url])
+                else:
+                    # To'g'ri URL bo'lsa
+                    ydl.download([download_url])
+        
+        except yt_dlp.utils.DownloadError as e:
+            logger.warning(f"yt-dlp xatosi (1-urish): {e}")
+            # Qayta urinish - sodda usul
+            simple_options = options.copy()
+            simple_options['extractor_args'] = {}
+            simple_options['compat_opts'] = []
+            
+            with yt_dlp.YoutubeDL(simple_options) as ydl:
+                ydl.download([download_url])
         
         # Yuklanganini tekshirish
         if output_path.exists():
@@ -325,8 +388,52 @@ def download_youtube_audio(query: str, filename_hint: str = "") -> Optional[Path
         if mp3_files and (time.time() - mp3_files[0].stat().st_mtime) < 120:
             return mp3_files[0]
         
+        # Fallback 2: barcha fayllarni tekshirish
+        all_files = sorted(
+            TEMP_DIR.glob('*'),
+            key=lambda f: f.stat().st_mtime if f.is_file() else 0,
+            reverse=True
+        )
+        
+        for file_path in all_files:
+            if file_path.is_file() and file_path.suffix.lower() in ['.mp3', '.m4a', '.webm']:
+                if (time.time() - file_path.stat().st_mtime) < 120:
+                    return file_path
+        
     except Exception as e:
         logger.error(f"Audio yuklash xatosi: {e}")
+        # Sodda usul bilan qayta urinish
+        try:
+            simple_options = {
+                'quiet': True,
+                'no_warnings': True,
+                'format': 'bestaudio',
+                'outtmpl': str(TEMP_DIR / f"audio_simple_{clean_name}.%(ext)s"),
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '128',
+                }],
+            }
+            
+            with yt_dlp.YoutubeDL(simple_options) as ydl:
+                if query.startswith(('http://', 'https://', 'www.')):
+                    ydl.download([query])
+                else:
+                    ydl.download([f"ytsearch1:{query}"])
+            
+            # Yangi faylni topish
+            mp3_files = sorted(
+                TEMP_DIR.glob('audio_*.mp3'),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True
+            )
+            
+            if mp3_files and (time.time() - mp3_files[0].stat().st_mtime) < 120:
+                return mp3_files[0]
+                
+        except Exception as e2:
+            logger.error(f"Qayta urinish ham xatolik: {e2}")
     
     return None
 
@@ -918,10 +1025,52 @@ def handle_search(message: types.Message) -> None:
         
         logger.info(f"Qidiruv: {query}")
         
-        # YouTube qidiruv - 50 ta qidirish
-        with yt_dlp.YoutubeDL(SEARCH_OPTIONS) as ydl:
-            info = ydl.extract_info(f"ytsearch50:{query}", download=False)
-            songs = info.get('entries', [])
+        # Yengil qidiruv opsiyalari
+        search_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'socket_timeout': 30,
+            'ignoreerrors': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            'extractor_args': {
+                'youtube': {
+                    'skip': ['hls', 'dash'],
+                }
+            },
+        }
+        
+        try:
+            with yt_dlp.YoutubeDL(search_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch50:{query}", download=False)
+                songs = info.get('entries', [])
+        except Exception as search_error:
+            logger.warning(f"Search xatosi (1-urish): {search_error}")
+            # Sodda qidiruv bilan qayta urinish
+            simple_search_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': True,
+                'socket_timeout': 30,
+                'ignoreerrors': True,
+            }
+            
+            with yt_dlp.YoutubeDL(simple_search_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch30:{query}", download=False)
+                songs = info.get('entries', [])
+        
+        if not songs:
+            bot.edit_message_text(
+                "❌ Hech narsa topilmadi\n\nBoshqa nom bilan qidiring",
+                message.chat.id,
+                status_msg.message_id
+            )
+            return
+        
+        # Tozalash - None bo'lgan elementlarni olib tashlash
+        songs = [song for song in songs if song]
         
         if not songs:
             bot.edit_message_text(
@@ -947,7 +1096,7 @@ def handle_search(message: types.Message) -> None:
         logger.error(f"Qidiruv xatosi: {e}")
         if status_msg:
             bot.edit_message_text(
-                "❌ Qidiruvda xatolik",
+                "❌ Qidiruvda xatolik\n\nIltimos, qayta urinib ko'ring",
                 message.chat.id,
                 status_msg.message_id
             )
@@ -1116,8 +1265,40 @@ def handle_song_download(call: types.CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "⏳ Yuklanmoqda...")
         logger.info(f"Yuklash: {title}")
         
-        # Audio yuklash
-        audio_file_path = download_youtube_audio(url, title)
+        # 1-urinish: oddiy usul bilan
+        try:
+            audio_file_path = download_youtube_audio(url, title)
+        except Exception as e:
+            logger.warning(f"Download xatosi (1-urish): {e}")
+            # 2-urinish: sodda usul
+            try:
+                simple_options = {
+                    'quiet': True,
+                    'no_warnings': True,
+                    'format': 'bestaudio',
+                    'outtmpl': str(TEMP_DIR / f"temp_%(title)s.%(ext)s"),
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '128',
+                    }],
+                }
+                
+                with yt_dlp.YoutubeDL(simple_options) as ydl:
+                    ydl.download([url])
+                
+                # Eng yangi mp3 faylni topish
+                mp3_files = sorted(
+                    TEMP_DIR.glob('temp_*.mp3'),
+                    key=lambda f: f.stat().st_mtime,
+                    reverse=True
+                )
+                
+                if mp3_files and (time.time() - mp3_files[0].stat().st_mtime) < 120:
+                    audio_file_path = mp3_files[0]
+                    
+            except Exception as e2:
+                logger.error(f"Download xatosi (2-urish): {e2}")
         
         if audio_file_path and audio_file_path.exists():
             with open(audio_file_path, 'rb') as audio_file:
@@ -1131,13 +1312,13 @@ def handle_song_download(call: types.CallbackQuery) -> None:
         else:
             bot.send_message(
                 call.message.chat.id,
-                "❌ Yuklashda xatolik\n\nQayta urinib ko'ring"
+                "❌ Yuklashda xatolik\n\nQayta urinib ko'ring yoki boshqa qo'shiq tanlang"
             )
         
         safe_delete(data_file)
     
     except Exception as e:
-        logger.error(f"Download xatosi: {e}")
+        logger.error(f"Download callback xatosi: {e}")
         bot.answer_callback_query(call.id, "❌ Xatolik yuz berdi", show_alert=True)
     
     finally:
